@@ -515,38 +515,42 @@
         // State with all retirement planning inputs
         const state = {
             // Personal information
-            currentAge: 38,
+            currentAge: 0,
             currentYear: 2026,
-            retirementAge: 62,
-            yearsInRetirement: 35,
+            retirementAge: 0,
+            yearsInRetirement: 0,
             
             // Financial assets
-            taxableAssets: 851286.69,
-            pretaxAssets: 1374023.50,
-            rothAssets: 144923.96,
+            taxableAssets: 0,
+            pretaxAssets: 0,
+            rothAssets: 0,
             
             // Contributions
-            annualContribution: 30000,
+            annualContribution: 0,
             
             // Investment returns
-            projectedReturn: 7.0,
-            conservativeReturn: 4.0,
+            projectedReturn: 0,
+            conservativeReturn: 0,
             
             // Economics
-            inflationRate: 2.5,
-            effectiveTaxRate: 22.0,
-            withdrawalRate: 4.0,
+            inflationRate: 0,
+            effectiveTaxRate: 0,
+            withdrawalRate: 0,
+            withdrawalPercentageCustom: 4.0, // Custom percentage when using fixed-percentage model
             
             // Lifestyle
-            annualMortgagePayment: 35000,
-            yearsUntilMortgagePaid: 15,
+            annualMortgagePayment: 0,
+            yearsUntilMortgagePaid: 0,
             
             // Spending flexibility
             spendingType: 'fixed-percentage', // 'fixed-percentage' or 'fixed-amount' or 'dynamic'
             customSpendingAmount: 0,
             
             // Longevity
-            lifeExpectancy: 95
+            lifeExpectancy: 0,
+            
+            // Lump sums (special grants, inheritances, etc)
+            lumpSums: []
         };
         
         // Saved scenarios for comparison
@@ -575,9 +579,16 @@
             let balance = getTotalAssets();
             const yearsToRetire = retireAge - state.currentAge;
             
-            // Add annual contributions during working years
+            // Add annual contributions and lump sums during working years
             for (let i = 0; i < yearsToRetire; i++) {
                 balance = balance * (1 + returnRate / 100) + state.annualContribution;
+                
+                // Add lump sums if they occur in this year
+                const year = state.currentYear + i;
+                const lumpSumsThisYear = state.lumpSums.filter(ls => ls.year === year);
+                for (let ls of lumpSumsThisYear) {
+                    balance += ls.amount;
+                }
             }
             
             return balance;
@@ -640,8 +651,16 @@
                 const age = state.currentAge + year;
                 const growth = balance * (state.projectedReturn / 100);
                 balance = balance + growth + state.annualContribution;
+                
+                // Add lump sums if they occur in this year
+                const yearNum = state.currentYear + year;
+                const lumpSumsThisYear = state.lumpSums.filter(ls => ls.year === yearNum);
+                for (let ls of lumpSumsThisYear) {
+                    balance += ls.amount;
+                }
+                
                 years.push({
-                    year: state.currentYear + year,
+                    year: yearNum,
                     age,
                     phase: 'accumulation',
                     contribution: state.annualContribution,
@@ -658,13 +677,14 @@
             let annualWithdrawal;
             
             if (state.spendingType === 'fixed-amount') {
-                annualWithdrawal = state.customSpendingAmount;
+                // Fixed amount is after-tax yearly spending, so convert to pre-tax
+                annualWithdrawal = state.customSpendingAmount / (1 - state.effectiveTaxRate / 100);
             } else if (state.spendingType === 'dynamic') {
-                // Dynamic: Start with 4% but adjust if portfolio drops below 80% of peak
-                annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
+                // Dynamic: Start with custom percentage but adjust if portfolio drops below 80% of peak
+                annualWithdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
             } else {
-                // Fixed percentage (default)
-                annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
+                // Fixed percentage
+                annualWithdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
             }
             
             const afterTaxWithdrawal = annualWithdrawal * (1 - state.effectiveTaxRate / 100);
@@ -796,6 +816,62 @@
             if (saved) {
                 savedScenarios = JSON.parse(saved);
             }
+        }
+        
+        // Lump sum management
+        function addLumpSum(amount, year) {
+            if (amount > 0 && year > 0) {
+                state.lumpSums.push({ id: Date.now(), amount, year });
+                render();
+            }
+        }
+        
+        function deleteLumpSum(id) {
+            state.lumpSums = state.lumpSums.filter(ls => ls.id !== id);
+            render();
+        }
+        
+        // Calculate required portfolio value at a given age to achieve 90% success rate
+        function calculateRequiredPortfolio(retireAge) {
+            if (state.withdrawalRate === 0) return 0;
+            
+            // Binary search for the required portfolio
+            let low = 0;
+            let high = getTotalAssets() * 5;
+            let required = 0;
+            
+            for (let iteration = 0; iteration < 20; iteration++) {
+                const mid = (low + high) / 2;
+                const saved = state.withdrawalRate;
+                
+                // Temporarily set a fake portfolio to test
+                const testPortfolio = mid;
+                const testWithdrawal = testPortfolio * (state.withdrawalRate / 100);
+                
+                // Estimate success - simplified check
+                const yearsToRet = retireAge - state.currentAge;
+                const yearsInRet = state.yearsInRetirement;
+                let testBalance = testPortfolio;
+                let endBalance = testBalance;
+                
+                // Simple projection
+                for (let y = 0; y < yearsInRet; y++) {
+                    endBalance = testBalance * (1 + state.projectedReturn / 100) - testWithdrawal;
+                    testBalance = endBalance;
+                }
+                
+                const initialInflationAdjusted = testPortfolio / Math.pow(1 + state.inflationRate / 100, yearsToRet);
+                const endInflationAdjusted = endBalance / Math.pow(1 + state.inflationRate / 100, yearsToRet + yearsInRet);
+                
+                if (endInflationAdjusted > initialInflationAdjusted) {
+                    high = mid;
+                    required = mid;
+                } else {
+                    low = mid;
+                }
+            }
+            
+            return required;
         }
         
         // Render dashboard
@@ -935,14 +1011,46 @@
                             <div class="input-group">
                                 <label>Spending Type</label>
                                 <select data-key="spendingType">
-                                    <option value="fixed-percentage">Fixed Percentage (4% Rule)</option>
-                                    <option value="fixed-amount">Fixed Dollar Amount</option>
+                                    <option value="fixed-percentage">Fixed Percentage of Portfolio</option>
+                                    <option value="fixed-amount">Fixed After-Tax Yearly Spending</option>
                                     <option value="dynamic">Dynamic (Adjust with Market)</option>
                                 </select>
                             </div>
                             <div class="input-group">
-                                <label>Custom Spending Amount (if fixed)</label>
+                                <label>Withdrawal Percentage (if fixed %)</label>
+                                <input type="number" data-key="withdrawalPercentageCustom" step="0.1" value="${state.withdrawalPercentageCustom}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>After-Tax Yearly Spending (if fixed $)</label>
                                 <input type="number" data-key="customSpendingAmount" step="1" value="${state.customSpendingAmount}"/>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 30px;">
+                        <h3>Lump Sum Amounts</h3>
+                        <p class="info-text">Add special stock grants, inheritances, or other lump sums.</p>
+                        <div style="margin-bottom: 15px;">
+                            ${state.lumpSums.map(ls => `
+                                <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center; background: #f9fafb; padding: 12px; border-radius: 6px;">
+                                    <div style="flex: 1;">
+                                        <strong>${fmt(ls.amount)}</strong> in year <strong>${ls.year}</strong>
+                                    </div>
+                                    <button class="small-button delete" data-lumpsum-id="${ls.id}" style="margin: 0;">🗑️ Remove</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Lump Sum Amount</label>
+                                <input type="number" id="lumpSumAmount" step="1" placeholder="0"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Year Received</label>
+                                <input type="number" id="lumpSumYear" step="1" placeholder="${state.currentYear}"/>
+                            </div>
+                            <div class="input-group">
+                                <button id="addLumpSumBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; margin-top: 22px;">➕ Add Lump Sum</button>
                             </div>
                         </div>
                     </div>
@@ -1020,6 +1128,7 @@
                                     <th>Today's Dollars</th>
                                     <th>Annual Withdrawal</th>
                                     <th>Success Probability</th>
+                                    <th>Required Portfolio for 90% Success</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1029,6 +1138,7 @@
                                     let confidenceClass = 'confidence-low';
                                     if (mc >= 90) confidenceClass = 'confidence-high';
                                     else if (mc >= 85) confidenceClass = 'confidence-medium';
+                                    const requiredPortfolio = calculateRequiredPortfolio(s.age);
                                     
                                     return `
                                         <tr ${s.highlight ? 'class="scenario-row highlight"' : ''}>
@@ -1044,6 +1154,7 @@
                                                     ${mc >= 90 ? 'High' : mc >= 85 ? 'Medium' : 'Low'}
                                                 </span>
                                             </td>
+                                            <td style="${s.portfolio >= requiredPortfolio ? 'color: #16a34a; font-weight: 600;' : 'color: #dc2626; font-weight: 600;'}">${fmt(requiredPortfolio)}</td>
                                         </tr>
                                     `;
                                 }).join('')}
@@ -1394,6 +1505,28 @@
             document.querySelectorAll('select[data-key]').forEach(select => {
                 select.addEventListener('change', (e) => {
                     state[e.target.dataset.key] = e.target.value;
+                });
+            });
+            
+            // Lump sum management
+            const addLumpSumBtn = document.getElementById('addLumpSumBtn');
+            if (addLumpSumBtn) {
+                addLumpSumBtn.addEventListener('click', () => {
+                    const amount = parseFloat(document.getElementById('lumpSumAmount').value) || 0;
+                    const year = parseInt(document.getElementById('lumpSumYear').value) || state.currentYear;
+                    if (amount > 0 && year > 0) {
+                        addLumpSum(amount, year);
+                        document.getElementById('lumpSumAmount').value = '';
+                        document.getElementById('lumpSumYear').value = '';
+                    }
+                });
+            }
+            
+            // Lump sum delete buttons
+            document.querySelectorAll('.small-button.delete[data-lumpsum-id]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = parseInt(e.target.dataset.lumpsumId);
+                    deleteLumpSum(id);
                 });
             });
             
