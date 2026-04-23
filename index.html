@@ -259,6 +259,29 @@
             color: #991b1b;
         }
         
+        .calculate-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 32px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+        }
+        
+        .calculate-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .calculate-button:active {
+            transform: translateY(0);
+        }
+        
         footer {
             text-align: center;
             padding: 40px 0 20px;
@@ -373,7 +396,8 @@
                     if (balance < 0) break;
                 }
                 
-                if (balance > 0) successCount++;
+                // Success = end balance is greater than starting balance (portfolio grew)
+                if (balance > initialBalance) successCount++;
             }
             
             return (successCount / iterations) * 100;
@@ -383,6 +407,7 @@
         function generateYearByYear() {
             let balance = getTotalAssets();
             const yearsToRetire = state.retirementAge - state.currentAge;
+            const retirementYear = state.currentYear + yearsToRetire;
             const years = [];
             
             // Pre-retirement years
@@ -406,6 +431,7 @@
             // Post-retirement years
             const portfolioAtRetirement = balance;
             const annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
+            const afterTaxWithdrawal = annualWithdrawal * (1 - state.effectiveTaxRate / 100);
             const mortgageEndAge = state.retirementAge + state.yearsUntilMortgagePaid;
             
             for (let year = 0; year < state.yearsInRetirement; year++) {
@@ -414,6 +440,9 @@
                 const growth = balance * (state.projectedReturn / 100);
                 balance = balance + growth - annualWithdrawal - mortgagePayment;
                 
+                const yearsIntoRetirement = year;
+                const balanceInTodaysDollars = adjustForInflation(Math.max(0, balance), yearsIntoRetirement);
+                
                 years.push({
                     year: state.currentYear + yearsToRetire + year,
                     age,
@@ -421,7 +450,9 @@
                     contribution: 0,
                     growth,
                     balance: Math.max(0, balance),
+                    balanceInTodaysDollars,
                     withdrawal: annualWithdrawal,
+                    monthlyWithdrawalAfterTax: afterTaxWithdrawal / 12,
                     mortgage: mortgagePayment,
                     income: 0
                 });
@@ -439,6 +470,7 @@
             const portfolioInTodaysDollars = adjustForInflation(portfolioAtRetirement, yearsToRetirement);
             const annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
             const afterTaxIncome = annualWithdrawal * (1 - state.effectiveTaxRate / 100);
+            const monthlyAfterTaxIncome = afterTaxIncome / 12;
             
             // Scenarios at different retirement ages
             const scenarios = [];
@@ -559,6 +591,8 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <button class="calculate-button" id="calculateBtn">📊 Calculate</button>
                 </div>
                 
                 <!-- SECTION 2: OUTPUTS & SUMMARY -->
@@ -592,8 +626,10 @@
                         <div class="metric-card green">
                             <div class="metric-label">After-Tax Annual Income</div>
                             <div class="metric-value">${fmt(afterTaxIncome)}</div>
-                        </div>
-                        <div class="metric-card blue">
+                        </div>                        <div class="metric-card green">
+                            <div class="metric-label">After-Tax Monthly Income</div>
+                            <div class="metric-value">${fmt(monthlyAfterTaxIncome)}</div>
+                        </div>                        <div class="metric-card blue">
                             <div class="metric-label">Conservative Scenario Portfolio</div>
                             <div class="metric-value">${fmt(portfolioAtRetirementConservative)}</div>
                         </div>
@@ -652,6 +688,7 @@
                     
                     <p class="info-text">
                         <strong>Note:</strong> The highlighted row shows your current retirement age target. 
+                        Success is defined as ending with MORE money than you started retirement with (portfolio growth).
                         A success probability of 90%+ is considered safe, 75-90% is moderate, and below 75% may require adjustments.
                     </p>
                 </div>
@@ -678,8 +715,10 @@
                                         <th>Annual Contribution</th>
                                         <th>Investment Growth</th>
                                         <th>Withdrawal</th>
+                                        <th>Monthly Withdrawal (After Tax)</th>
                                         <th>Mortgage Payment</th>
                                         <th>Balance</th>
+                                        <th>Balance (Today's Dollars)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -691,8 +730,10 @@
                                             <td>${row.contribution > 0 ? fmt(row.contribution) : '—'}</td>
                                             <td class="positive">${fmt(row.growth)}</td>
                                             <td>${row.withdrawal > 0 ? fmt(row.withdrawal) : '—'}</td>
+                                            <td>${row.monthlyWithdrawalAfterTax ? fmt(row.monthlyWithdrawalAfterTax) : '—'}</td>
                                             <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
                                             <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
+                                            <td style="font-weight: 600; color: #7b1fa2;">${row.balanceInTodaysDollars ? fmt(row.balanceInTodaysDollars) : '—'}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -738,8 +779,10 @@
                                         <th>Age</th>
                                         <th>Investment Growth</th>
                                         <th>Withdrawal</th>
+                                        <th>Monthly Withdrawal (After Tax)</th>
                                         <th>Mortgage Payment</th>
                                         <th>Balance</th>
+                                        <th>Balance (Today's Dollars)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -749,8 +792,10 @@
                                             <td>${row.age}</td>
                                             <td class="positive">${fmt(row.growth)}</td>
                                             <td>${fmt(row.withdrawal)}</td>
+                                            <td>${fmt(row.monthlyWithdrawalAfterTax)}</td>
                                             <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
                                             <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
+                                            <td style="font-weight: 600; color: #7b1fa2;">${fmt(row.balanceInTodaysDollars)}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -764,12 +809,19 @@
                 </footer>
             `;
             
-            // Attach event listeners to inputs
+            // Attach Calculate button listener
+            const calculateBtn = document.getElementById('calculateBtn');
+            if (calculateBtn) {
+                calculateBtn.addEventListener('click', () => {
+                    render();
+                });
+            }
+            
+            // Update state without re-rendering on input changes
             document.querySelectorAll('input[data-key]').forEach(input => {
                 input.addEventListener('change', (e) => {
                     const value = parseFloat(e.target.value);
                     state[e.target.dataset.key] = isNaN(value) ? 0 : value;
-                    render();
                 });
             });
             
