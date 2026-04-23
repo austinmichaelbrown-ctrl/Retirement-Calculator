@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard v1.1</title>
+    <title>Retirement Planning Dashboard - AB Version 1.1</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -81,6 +81,17 @@
             transition: border-color 0.3s;
         }
         
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            cursor: pointer;
+        }
+
         .input-group input:focus {
             outline: none;
             border-color: #667eea;
@@ -505,7 +516,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.1</h1>
         <div id="app"></div>
     </div>
     
@@ -599,11 +610,21 @@
             return futureValue / Math.pow(1 + state.inflationRate / 100, yearsOut);
         }
         
+        // Helper for normal distribution (Box-Muller)
+        function gaussianRandom(mean, stdDev) {
+            const u = 1 - Math.random();
+            const v = Math.random();
+            const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            return z * stdDev + mean;
+        }
+
         // Calculate annual withdrawal based on spending type and year
         function calculateAnnualWithdrawal(currentBalance, initialBalance, yearInRetirement, overrideWithdrawalRate = null) {
+            const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, yearInRetirement);
+            
             if (overrideWithdrawalRate !== null) {
-                // Sensitivity analysis: use override rate as percentage
-                return initialBalance * (overrideWithdrawalRate / 100);
+                // Standard retirement rule: Initial % adjusted for inflation annually
+                return (initialBalance * (overrideWithdrawalRate / 100)) * inflationMultiplier;
             }
             
             if (state.spendingType === 'fixed-amount') {
@@ -612,8 +633,8 @@
                 const afterTaxSpending = state.customSpendingAmount * inflationMultiplier;
                 return afterTaxSpending / (1 - state.effectiveTaxRate / 100);
             } else {
-                // Fixed percentage of initial portfolio at retirement
-                return initialBalance * (state.withdrawalPercentageCustom / 100);
+                // Standard retirement rule: Fixed % of initial portfolio, adjusted for inflation
+                return (initialBalance * (state.withdrawalPercentageCustom / 100)) * inflationMultiplier;
             }
         }
         
@@ -625,9 +646,8 @@
             const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, retireAge - state.currentAge);
 
             for (let year = 0; year < yearsInRetirement; year++) {
-                const randomReturn = (Math.random() + Math.random() + Math.random() + 
-                                     Math.random() + Math.random() + Math.random() - 3) * 6 + 
-                                    (state.projectedReturn - 2);
+                // Use Gaussian distribution for more accurate market modeling (StdDev assumed 12%)
+                const randomReturn = gaussianRandom(state.projectedReturn, 12);
                 
                 let withdrawal = calculateAnnualWithdrawal(balance, initialBalance, year, overrideWithdrawalRate);
                 
@@ -638,25 +658,29 @@
                 
                 balance = balance * (1 + randomReturn / 100) - withdrawal;
                 if (balance > peakBalance) peakBalance = balance;
-                if (balance < 0) return { success: false, endBalance: 0 };
+                if (balance <= 0) return { successRunOut: false, successGrowth: false, endBalance: 0 };
             }
             
             const yearsTotal = (retireAge - state.currentAge) + yearsInRetirement;
             const endBalanceInTodaysDollars = adjustForInflation(balance, yearsTotal);
-            return { success: endBalanceInTodaysDollars > initialBalanceInTodaysDollars, endBalance: balance };
+            
+            return { 
+                successRunOut: balance > 0, 
+                successGrowth: endBalanceInTodaysDollars >= initialBalanceInTodaysDollars, 
+                endBalance: balance 
+            };
         }
 
         // Run a Monte Carlo simulation for retirement success
         function runMonteCarloSimulation(retireAge, iterations = 1000, overrideWithdrawalRate = null) {
             const yearsToRetire = retireAge - state.currentAge;
-            let successCount = 0;
+            let runOutSuccess = 0;
+            let growthSuccess = 0;
             
             for (let i = 0; i < iterations; i++) {
                 let balance = getTotalAssets();
                 for (let year = 0; year < yearsToRetire; year++) {
-                    const randomReturn = (Math.random() + Math.random() + Math.random() + 
-                                         Math.random() + Math.random() + Math.random() - 3) * 6 + 
-                                        (state.projectedReturn - 2);
+                    const randomReturn = gaussianRandom(state.projectedReturn, 12);
                     balance = balance * (1 + randomReturn / 100) + state.annualContribution;
                     
                     const yearNum = state.currentYear + year;
@@ -665,10 +689,14 @@
                 }
                 
                 const result = simulateRetirement(balance, state.yearsInRetirement, retireAge, overrideWithdrawalRate);
-                if (result.success) successCount++;
+                if (result.successRunOut) runOutSuccess++;
+                if (result.successGrowth) growthSuccess++;
             }
             
-            return (successCount / iterations) * 100;
+            return {
+                longevity: (runOutSuccess / iterations) * 100,
+                preservation: (growthSuccess / iterations) * 100
+            };
         }
         
         // Generate year-by-year breakdown
@@ -768,19 +796,19 @@
             
             return {
                 ageVsRate: generateMatrix(retireAges, withdrawalRates, (age, rate) => {
-                    return runMonteCarloSimulation(age, 500, rate);
+                    return runMonteCarloSimulation(age, 500, rate).longevity;
                 }),
                 ageVsReturn: generateMatrix(retireAges, returns, (age, ret) => {
                     const saved = state.projectedReturn;
                     state.projectedReturn = ret;
-                    const result = runMonteCarloSimulation(age, 500);
+                    const result = runMonteCarloSimulation(age, 500).longevity;
                     state.projectedReturn = saved;
                     return result;
                 }),
                 rateVsReturn: generateMatrix(withdrawalRates, returns, (rate, ret) => {
                     const savedRet = state.projectedReturn;
                     state.projectedReturn = ret;
-                    const result = runMonteCarloSimulation(state.retirementAge, 500, rate);
+                    const result = runMonteCarloSimulation(state.retirementAge, 500, rate).longevity;
                     state.projectedReturn = savedRet;
                     return result;
                 })
@@ -871,7 +899,7 @@
                 // Test this portfolio with Monte Carlo
                 for (let i = 0; i < iterations; i++) {
                     const result = simulateRetirement(mid, state.yearsInRetirement, retireAge);
-                    if (result.success) successCount++;
+                    if (result.successRunOut) successCount++;
                 }
                 
                 const successRate = (successCount / iterations) * 100;
@@ -934,7 +962,10 @@
                         <div class="input-grid">
                             <div class="input-group">
                                 <label>Current Age</label>
-                                <input type="number" data-key="currentAge" step="1" value="${state.currentAge}"/>
+                                <div class="input-row">
+                                    <input type="number" data-key="currentAge" step="1" value="${state.currentAge}"/>
+                                    <input type="range" data-key="currentAge" min="18" max="75" value="${state.currentAge}"/>
+                                </div>
                             </div>
                             <div class="input-group">
                                 <label>Current Year</label>
@@ -942,7 +973,10 @@
                             </div>
                             <div class="input-group">
                                 <label>Retirement Age</label>
-                                <input type="number" data-key="retirementAge" step="1" value="${state.retirementAge}"/>
+                                <div class="input-row">
+                                    <input type="number" data-key="retirementAge" step="1" value="${state.retirementAge}"/>
+                                    <input type="range" data-key="retirementAge" min="30" max="80" value="${state.retirementAge}"/>
+                                </div>
                             </div>
                             <div class="input-group">
                                 <label>Years in Retirement</label>
@@ -974,11 +1008,17 @@
                         <div class="input-grid">
                             <div class="input-group">
                                 <label>Annual Contribution (Before Retirement)</label>
-                                <input type="number" data-key="annualContribution" step="1" value="${state.annualContribution}"/>
+                                <div class="input-row">
+                                    <input type="number" data-key="annualContribution" step="500" value="${state.annualContribution}"/>
+                                    <input type="range" data-key="annualContribution" min="0" max="200000" step="1000" value="${state.annualContribution}"/>
+                                </div>
                             </div>
                             <div class="input-group">
                                 <label>Projected Annual Return (%)</label>
-                                <input type="number" data-key="projectedReturn" step="0.1" value="${state.projectedReturn}"/>
+                                <div class="input-row">
+                                    <input type="number" data-key="projectedReturn" step="0.1" value="${state.projectedReturn}"/>
+                                    <input type="range" data-key="projectedReturn" min="1" max="15" step="0.1" value="${state.projectedReturn}"/>
+                                </div>
                             </div>
                             <div class="input-group">
                                 <label>Conservative Annual Return (%)</label>
@@ -1028,7 +1068,10 @@
                             </div>
                             <div class="input-group">
                                 <label>Withdrawal Percentage (%) - Used for Fixed % and starting % for Dynamic</label>
-                                <input type="number" data-key="withdrawalPercentageCustom" step="0.1" value="${state.withdrawalPercentageCustom}"/>
+                                <div class="input-row">
+                                    <input type="number" data-key="withdrawalPercentageCustom" step="0.1" value="${state.withdrawalPercentageCustom}"/>
+                                    <input type="range" data-key="withdrawalPercentageCustom" min="1" max="10" step="0.1" value="${state.withdrawalPercentageCustom}"/>
+                                </div>
                             </div>
                             <div class="input-group">
                                 <label>After-Tax Yearly Spending (if fixed $)</label>
@@ -1137,7 +1180,8 @@
                                     <th>Portfolio Value</th>
                                     <th>Today's Dollars</th>
                                     <th>Annual Withdrawal</th>
-                                    <th>Success Probability</th>
+                                    <th>Longevity Probability (End > $0)</th>
+                                    <th>Preservation Probability (End > Start Adjusted)</th>
                                     <th>Required Portfolio for 90% Success</th>
                                 </tr>
                             </thead>
@@ -1145,9 +1189,10 @@
                                 ${scenarios.map(s => {
                                     const mc = s.age === state.retirementAge ? monteCarloBase : 
                                               (s.age < state.retirementAge ? monteCarloEarly : monteCarloLate);
-                                    let confidenceClass = 'confidence-low';
-                                    if (mc >= 90) confidenceClass = 'confidence-high';
-                                    else if (mc >= 85) confidenceClass = 'confidence-medium';
+                                    
+                                    let confidenceClass = 'confidence-low'; // Based on longevity
+                                    if (mc.longevity >= 90) confidenceClass = 'confidence-high';
+                                    else if (mc.longevity >= 85) confidenceClass = 'confidence-medium';
                                     const requiredPortfolio = calculateRequiredPortfolio(s.age);
                                     
                                     return `
@@ -1159,10 +1204,13 @@
                                             <td>${fmt(s.portfolioToday)}</td>
                                             <td>${fmt(s.withdrawal)}</td>
                                             <td>
-                                                ${pct(mc)}
+                                                ${pct(mc.longevity)}
                                                 <span class="confidence-badge ${confidenceClass}">
-                                                    ${mc >= 90 ? 'High' : mc >= 85 ? 'Medium' : 'Low'}
+                                                    ${mc.longevity >= 90 ? 'High' : mc.longevity >= 85 ? 'Medium' : 'Low'}
                                                 </span>
+                                            </td>
+                                            <td>
+                                                ${pct(mc.preservation)}
                                             </td>
                                             <td style="${s.portfolio >= requiredPortfolio ? 'color: #16a34a; font-weight: 600;' : 'color: #dc2626; font-weight: 600;'}">${fmt(requiredPortfolio)}</td>
                                         </tr>
@@ -1174,8 +1222,8 @@
                     
                     <p class="info-text">
                         <strong>Note:</strong> The highlighted row shows your current retirement age target. 
-                        Success is defined as ending with MORE inflation-adjusted money than you started retirement with.
-                        A success probability of 90%+ is considered safe, 85-90% is moderate, and below 85% may require adjustments.
+                        <strong>Longevity</strong> is the % chance you don't run out of money. 
+                        <strong>Preservation</strong> is the % chance you end with more inflation-adjusted wealth than you started with.
                     </p>
                 </div>
                 
@@ -1516,6 +1564,17 @@
                 input.addEventListener('change', (e) => {
                     const value = parseFloat(e.target.value);
                     state[e.target.dataset.key] = isNaN(value) ? 0 : value;
+                    render(); // Re-render for immediate feedback
+                });
+                
+                // For range sliders, also update on 'input' for even smoother feedback
+                input.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    state[e.target.dataset.key] = isNaN(value) ? 0 : value;
+                    // We don't re-render full dashboard on every slider tick to avoid lag, 
+                    // but we sync the sibling input if it exists
+                    const sibling = e.target.parentElement.querySelector(e.target.type === 'range' ? 'input[type="number"]' : 'input[type="range"]');
+                    if (sibling) sibling.value = e.target.value;
                 });
             });
             
@@ -1627,11 +1686,11 @@
             const getSuccessRate = () => {
                 // Save global state temporarily
                 const originalState = JSON.stringify(state);
-                Object.assign(state, stateData);
-                const rate = runMonteCarloSimulation(stateData.retirementAge, 300);
-                Object.assign(state, JSON.parse(originalState));
-                return rate;
-            };
+                    Object.assign(state, stateData);
+                    const rate = runMonteCarloSimulation(stateData.retirementAge, 300);
+                    Object.assign(state, JSON.parse(originalState));
+                    return rate;
+                };
             
             return {
                 'Retirement Age': stateData.retirementAge,
@@ -1640,7 +1699,7 @@
                 'Annual Withdrawal': fmt(withdraw),
                 'After-Tax Income': fmt(afterTax),
                 'Monthly Income': fmt(afterTax / 12),
-                'Success Probability': pct(getSuccessRate()),
+                'Success (Longevity)': pct(getSuccessRate().longevity),
                 'Spending Type': stateData.spendingType,
                 'Return Assumption': pct(stateData.projectedReturn),
                 'Withdrawal Rate': pct(stateData.withdrawalPercentageCustom)
@@ -1703,7 +1762,7 @@
             const successCtx = document.getElementById('successChart');
             if (successCtx) {
                 const ages = [39, 42, 45, 48, 51, 54, 57];
-                const probs = ages.map(age => runMonteCarloSimulation(age, 500));
+                const probs = ages.map(age => runMonteCarloSimulation(age, 500).longevity);
                 
                 new Chart(successCtx, {
                     type: 'bar',
