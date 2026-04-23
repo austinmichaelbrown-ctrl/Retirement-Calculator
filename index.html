@@ -833,37 +833,66 @@
         
         // Calculate required portfolio value at a given age to achieve 90% success rate
         function calculateRequiredPortfolio(retireAge) {
-            if (state.withdrawalRate === 0) return 0;
+            // Binary search for the required portfolio that achieves 90% success
+            if (state.yearsInRetirement === 0 || state.projectedReturn === 0) return 0;
             
-            // Binary search for the required portfolio
+            const yearsToRetire = retireAge - state.currentAge;
+            if (yearsToRetire < 0) return 0;
+            
             let low = 0;
-            let high = getTotalAssets() * 5;
+            let high = 20000000; // Start with $20M upper bound
             let required = 0;
             
-            for (let iteration = 0; iteration < 20; iteration++) {
+            // Binary search: find portfolio amount that gives 90% success
+            for (let iteration = 0; iteration < 25; iteration++) {
                 const mid = (low + high) / 2;
-                const saved = state.withdrawalRate;
+                let successCount = 0;
+                const iterations = 500; // Faster check with fewer iterations
                 
-                // Temporarily set a fake portfolio to test
-                const testPortfolio = mid;
-                const testWithdrawal = testPortfolio * (state.withdrawalRate / 100);
-                
-                // Estimate success - simplified check
-                const yearsToRet = retireAge - state.currentAge;
-                const yearsInRet = state.yearsInRetirement;
-                let testBalance = testPortfolio;
-                let endBalance = testBalance;
-                
-                // Simple projection
-                for (let y = 0; y < yearsInRet; y++) {
-                    endBalance = testBalance * (1 + state.projectedReturn / 100) - testWithdrawal;
-                    testBalance = endBalance;
+                // Test this portfolio with Monte Carlo
+                for (let i = 0; i < iterations; i++) {
+                    let balance = mid; // Start with test portfolio
+                    
+                    // Withdrawal phase (starting from retireAge)
+                    const initialBalance = balance;
+                    const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, yearsToRetire);
+                    
+                    // Calculate annual withdrawal based on spending type
+                    let annualWithdrawal;
+                    if (state.spendingType === 'fixed-amount') {
+                        annualWithdrawal = state.customSpendingAmount / (1 - state.effectiveTaxRate / 100);
+                    } else {
+                        // fixed-percentage or dynamic: use percentage
+                        annualWithdrawal = balance * (state.withdrawalPercentageCustom / 100);
+                    }
+                    
+                    let peakBalance = balance;
+                    
+                    for (let year = 0; year < state.yearsInRetirement; year++) {
+                        const randomReturn = (Math.random() + Math.random() + Math.random() + 
+                                             Math.random() + Math.random() + Math.random() - 3) * 6 + 
+                                            (state.projectedReturn - 2);
+                        
+                        let withdrawal = annualWithdrawal;
+                        
+                        // Dynamic spending adjustment
+                        if (state.spendingType === 'dynamic' && balance < peakBalance * 0.8) {
+                            withdrawal = withdrawal * 0.9;
+                        }
+                        
+                        balance = balance * (1 + randomReturn / 100) - withdrawal;
+                        if (balance > peakBalance) peakBalance = balance;
+                        if (balance < 0) break;
+                    }
+                    
+                    // Success = end balance in today's dollars is greater than starting balance in today's dollars
+                    const endBalanceInTodaysDollars = adjustForInflation(balance, yearsToRetire + state.yearsInRetirement);
+                    if (endBalanceInTodaysDollars > initialBalanceInTodaysDollars) successCount++;
                 }
                 
-                const initialInflationAdjusted = testPortfolio / Math.pow(1 + state.inflationRate / 100, yearsToRet);
-                const endInflationAdjusted = endBalance / Math.pow(1 + state.inflationRate / 100, yearsToRet + yearsInRet);
+                const successRate = (successCount / iterations) * 100;
                 
-                if (endInflationAdjusted > initialInflationAdjusted) {
+                if (successRate >= 90) {
                     high = mid;
                     required = mid;
                 } else {
@@ -984,10 +1013,6 @@
                                 <label>Effective Tax Rate (%)</label>
                                 <input type="number" data-key="effectiveTaxRate" step="0.1" value="${state.effectiveTaxRate}"/>
                             </div>
-                            <div class="input-group">
-                                <label>Withdrawal Rate (%)</label>
-                                <input type="number" data-key="withdrawalRate" step="0.1" value="${state.withdrawalRate}"/>
-                            </div>
                         </div>
                     </div>
                     
@@ -1017,7 +1042,7 @@
                                 </select>
                             </div>
                             <div class="input-group">
-                                <label>Withdrawal Percentage (if fixed %)</label>
+                                <label>Withdrawal Percentage (%) - Used for Fixed % and starting % for Dynamic</label>
                                 <input type="number" data-key="withdrawalPercentageCustom" step="0.1" value="${state.withdrawalPercentageCustom}"/>
                             </div>
                             <div class="input-group">
@@ -1195,23 +1220,28 @@
                                         <th>Mortgage Payment</th>
                                         <th>Balance</th>
                                         <th>Balance (Today's Dollars)</th>
+                                        <th>Required Portfolio for 90%</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${yearByYearData.map(row => `
-                                        <tr>
-                                            <td>${row.year}</td>
-                                            <td>${row.age}</td>
-                                            <td>${row.phase === 'accumulation' ? '💼' : '🏖️'}</td>
-                                            <td>${row.contribution > 0 ? fmt(row.contribution) : '—'}</td>
-                                            <td class="positive">${fmt(row.growth)}</td>
-                                            <td>${row.withdrawal > 0 ? fmt(row.withdrawal) : '—'}</td>
-                                            <td>${row.monthlyWithdrawalAfterTax ? fmt(row.monthlyWithdrawalAfterTax) : '—'}</td>
-                                            <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
-                                            <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
-                                            <td style="font-weight: 600; color: #7b1fa2;">${row.balanceInTodaysDollars ? fmt(row.balanceInTodaysDollars) : '—'}</td>
-                                        </tr>
-                                    `).join('')}
+                                    ${yearByYearData.map(row => {
+                                        const requiredPortfolio = row.phase === 'retirement' ? calculateRequiredPortfolio(state.retirementAge) : null;
+                                        return `
+                                            <tr>
+                                                <td>${row.year}</td>
+                                                <td>${row.age}</td>
+                                                <td>${row.phase === 'accumulation' ? '💼' : '🏖️'}</td>
+                                                <td>${row.contribution > 0 ? fmt(row.contribution) : '—'}</td>
+                                                <td class="positive">${fmt(row.growth)}</td>
+                                                <td>${row.withdrawal > 0 ? fmt(row.withdrawal) : '—'}</td>
+                                                <td>${row.monthlyWithdrawalAfterTax ? fmt(row.monthlyWithdrawalAfterTax) : '—'}</td>
+                                                <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
+                                                <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
+                                                <td style="font-weight: 600; color: #7b1fa2;">${row.balanceInTodaysDollars ? fmt(row.balanceInTodaysDollars) : '—'}</td>
+                                                <td style="font-weight: 600; ${requiredPortfolio && row.balance >= requiredPortfolio ? 'color: #16a34a;' : 'color: #dc2626;'}">${requiredPortfolio ? fmt(requiredPortfolio) : '—'}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
                                 </tbody>
                             </table>
                         </div>
@@ -1259,21 +1289,26 @@
                                         <th>Mortgage Payment</th>
                                         <th>Balance</th>
                                         <th>Balance (Today's Dollars)</th>
+                                        <th>Required Portfolio for 90%</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${yearByYearData.filter(r => r.phase === 'retirement').map(row => `
-                                        <tr>
-                                            <td>${row.year}</td>
-                                            <td>${row.age}</td>
-                                            <td class="positive">${fmt(row.growth)}</td>
-                                            <td>${fmt(row.withdrawal)}</td>
-                                            <td>${fmt(row.monthlyWithdrawalAfterTax)}</td>
-                                            <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
-                                            <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
-                                            <td style="font-weight: 600; color: #7b1fa2;">${fmt(row.balanceInTodaysDollars)}</td>
-                                        </tr>
-                                    `).join('')}
+                                    ${yearByYearData.filter(r => r.phase === 'retirement').map(row => {
+                                        const requiredPortfolio = calculateRequiredPortfolio(state.retirementAge);
+                                        return `
+                                            <tr>
+                                                <td>${row.year}</td>
+                                                <td>${row.age}</td>
+                                                <td class="positive">${fmt(row.growth)}</td>
+                                                <td>${fmt(row.withdrawal)}</td>
+                                                <td>${fmt(row.monthlyWithdrawalAfterTax)}</td>
+                                                <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
+                                                <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
+                                                <td style="font-weight: 600; color: #7b1fa2;">${fmt(row.balanceInTodaysDollars)}</td>
+                                                <td style="font-weight: 600; ${row.balance >= requiredPortfolio ? 'color: #16a34a;' : 'color: #dc2626;'}">${fmt(requiredPortfolio)}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
                                 </tbody>
                             </table>
                         </div>
