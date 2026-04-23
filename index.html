@@ -608,6 +608,7 @@
                 
                 // Withdrawal phase
                 const initialBalance = balance;
+                const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, yearsToRetire);
                 const annualWithdrawal = initialBalance * (state.withdrawalRate / 100);
                 
                 for (let year = 0; year < yearsInRetirement; year++) {
@@ -619,8 +620,9 @@
                     if (balance < 0) break;
                 }
                 
-                // Success = end balance is greater than starting balance (portfolio grew)
-                if (balance > initialBalance) successCount++;
+                // Success = end balance in today's dollars is greater than starting balance in today's dollars
+                const endBalanceInTodaysDollars = adjustForInflation(balance, yearsToRetire + yearsInRetirement);
+                if (endBalanceInTodaysDollars > initialBalanceInTodaysDollars) successCount++;
             }
             
             return (successCount / iterations) * 100;
@@ -721,7 +723,7 @@
         
         // Generate sensitivity analysis data
         function generateSensitivityAnalysis() {
-            const retireAges = [55, 60, 62, 65, 70];
+            const retireAges = [39, 42, 45, 48, 51];
             const withdrawalRates = [3.0, 3.5, 4.0, 4.5, 5.0];
             const returns = [4.0, 5.0, 6.0, 7.0, 8.0];
             
@@ -1026,7 +1028,7 @@
                                               (s.age < state.retirementAge ? monteCarloEarly : monteCarloLate);
                                     let confidenceClass = 'confidence-low';
                                     if (mc >= 90) confidenceClass = 'confidence-high';
-                                    else if (mc >= 75) confidenceClass = 'confidence-medium';
+                                    else if (mc >= 85) confidenceClass = 'confidence-medium';
                                     
                                     return `
                                         <tr ${s.highlight ? 'class="scenario-row highlight"' : ''}>
@@ -1039,7 +1041,7 @@
                                             <td>
                                                 ${pct(mc)}
                                                 <span class="confidence-badge ${confidenceClass}">
-                                                    ${mc >= 90 ? 'High' : mc >= 75 ? 'Medium' : 'Low'}
+                                                    ${mc >= 90 ? 'High' : mc >= 85 ? 'Medium' : 'Low'}
                                                 </span>
                                             </td>
                                         </tr>
@@ -1051,8 +1053,8 @@
                     
                     <p class="info-text">
                         <strong>Note:</strong> The highlighted row shows your current retirement age target. 
-                        Success is defined as ending with MORE money than you started retirement with (portfolio growth).
-                        A success probability of 90%+ is considered safe, 75-90% is moderate, and below 75% may require adjustments.
+                        Success is defined as ending with MORE inflation-adjusted money than you started retirement with.
+                        A success probability of 90%+ is considered safe, 85-90% is moderate, and below 85% may require adjustments.
                     </p>
                 </div>
                 
@@ -1207,26 +1209,26 @@
                 <!-- SECTION 7: SENSITIVITY ANALYSIS -->
                 <div class="section">
                     <h2>🎯 Sensitivity Analysis</h2>
-                    <p class="info-text">Explore how changes in key variables affect your success probability. Green = 90%+ success, Yellow = 75-90%, Red = <75%.</p>
+                    <p class="info-text">Explore how changes in key variables affect your success probability. Green = 90%+ success, Yellow = 85-89%, Red = 84% or below.</p>
                     
                     <div style="margin-bottom: 30px;">
-                        <h3 style="margin-bottom: 15px;">Retirement Age vs Withdrawal Rate</h3>
+                        <h3 style="margin-bottom: 15px;">Age vs Withdrawal Rate</h3>
                         <div class="table-container" style="font-size: 12px;">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th style="padding: 8px;">Retire Age</th>
+                                        <th style="padding: 8px;">Age</th>
                                         ${[3.0, 3.5, 4.0, 4.5, 5.0].map(r => `<th style="padding: 8px;">${r}% Withdrawal</th>`).join('')}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${(() => {
                                         const sensitivity = generateSensitivityAnalysis();
-                                        return [55, 60, 62, 65, 70].map((age, i) => `
+                                        return [39, 42, 45, 48, 51].map((age, i) => `
                                             <tr>
                                                 <td style="padding: 8px; font-weight: 600;">${age}</td>
                                                 ${sensitivity.ageVsRate[i].map(pct => `
-                                                    <td class="sensitivity-cell ${pct >= 90 ? 'high' : pct >= 75 ? 'medium' : 'low'}">
+                                                    <td class="sensitivity-cell ${pct >= 90 ? 'high' : pct >= 85 ? 'medium' : 'low'}">
                                                         ${pct.toFixed(0)}%
                                                     </td>
                                                 `).join('')}
@@ -1244,18 +1246,18 @@
                             <table>
                                 <thead>
                                     <tr>
-                                        <th style="padding: 8px;">Retire Age</th>
+                                        <th style="padding: 8px;">Age</th>
                                         ${[4.0, 5.0, 6.0, 7.0, 8.0].map(r => `<th style="padding: 8px;">${r}% Return</th>`).join('')}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${(() => {
                                         const sensitivity = generateSensitivityAnalysis();
-                                        return [55, 60, 62, 65, 70].map((age, i) => `
+                                        return [39, 42, 45, 48, 51].map((age, i) => `
                                             <tr>
                                                 <td style="padding: 8px; font-weight: 600;">${age}</td>
                                                 ${sensitivity.ageVsReturn[i].map(pct => `
-                                                    <td class="sensitivity-cell ${pct >= 90 ? 'high' : pct >= 75 ? 'medium' : 'low'}">
+                                                    <td class="sensitivity-cell ${pct >= 90 ? 'high' : pct >= 85 ? 'medium' : 'low'}">
                                                         ${pct.toFixed(0)}%
                                                     </td>
                                                 `).join('')}
@@ -1527,7 +1529,7 @@
             // Success probability chart
             const successCtx = document.getElementById('successChart');
             if (successCtx) {
-                const ages = [55, 58, 60, 62, 65, 68, 70];
+                const ages = [39, 42, 45, 48, 51, 54, 57];
                 const probs = ages.map(age => runMonteCarloSimulation(age, 500));
                 
                 new Chart(successCtx, {
@@ -1538,7 +1540,7 @@
                             label: 'Success Probability (%)',
                             data: probs,
                             backgroundColor: probs.map(p => 
-                                p >= 90 ? '#16a34a' : p >= 75 ? '#f59e0b' : '#dc2626'
+                                p >= 90 ? '#16a34a' : p >= 85 ? '#f59e0b' : '#dc2626'
                             ),
                             borderRadius: 4
                         }]
