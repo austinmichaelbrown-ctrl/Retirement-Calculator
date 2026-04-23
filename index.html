@@ -674,20 +674,6 @@
             
             // Post-retirement years
             const portfolioAtRetirement = balance;
-            let annualWithdrawal;
-            
-            if (state.spendingType === 'fixed-amount') {
-                // Fixed amount is after-tax yearly spending, so convert to pre-tax
-                annualWithdrawal = state.customSpendingAmount / (1 - state.effectiveTaxRate / 100);
-            } else if (state.spendingType === 'dynamic') {
-                // Dynamic: Start with custom percentage but adjust if portfolio drops below 80% of peak
-                annualWithdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
-            } else {
-                // Fixed percentage
-                annualWithdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
-            }
-            
-            const afterTaxWithdrawal = annualWithdrawal * (1 - state.effectiveTaxRate / 100);
             const mortgageEndAge = state.retirementAge + state.yearsUntilMortgagePaid;
             let peakBalance = balance; // For dynamic spending
             
@@ -696,13 +682,24 @@
                 const mortgagePayment = age <= mortgageEndAge ? state.annualMortgagePayment : 0;
                 const growth = balance * (state.projectedReturn / 100);
                 
-                let withdrawal = annualWithdrawal;
+                let withdrawal;
                 
-                // Dynamic spending adjustment
-                if (state.spendingType === 'dynamic') {
+                if (state.spendingType === 'fixed-amount') {
+                    // Fixed amount increases by inflation each year
+                    const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, year);
+                    const afterTaxSpendingThisYear = state.customSpendingAmount * inflationMultiplier;
+                    withdrawal = afterTaxSpendingThisYear / (1 - state.effectiveTaxRate / 100);
+                } else if (state.spendingType === 'dynamic') {
+                    // Dynamic: Start with custom percentage but adjust if portfolio drops below 80% of peak
+                    withdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
+                    
+                    // Dynamic spending adjustment
                     if (balance < peakBalance * 0.8) {
                         withdrawal = withdrawal * 0.9; // Reduce spending by 10% if portfolio drops
                     }
+                } else {
+                    // Fixed percentage
+                    withdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
                 }
                 
                 balance = balance + growth - withdrawal - mortgagePayment;
@@ -857,15 +854,6 @@
                     const initialBalance = balance;
                     const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, yearsToRetire);
                     
-                    // Calculate annual withdrawal based on spending type
-                    let annualWithdrawal;
-                    if (state.spendingType === 'fixed-amount') {
-                        annualWithdrawal = state.customSpendingAmount / (1 - state.effectiveTaxRate / 100);
-                    } else {
-                        // fixed-percentage or dynamic: use percentage
-                        annualWithdrawal = balance * (state.withdrawalPercentageCustom / 100);
-                    }
-                    
                     let peakBalance = balance;
                     
                     for (let year = 0; year < state.yearsInRetirement; year++) {
@@ -873,7 +861,16 @@
                                              Math.random() + Math.random() + Math.random() - 3) * 6 + 
                                             (state.projectedReturn - 2);
                         
-                        let withdrawal = annualWithdrawal;
+                        let withdrawal;
+                        if (state.spendingType === 'fixed-amount') {
+                            // Fixed amount increases by inflation each year
+                            const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, year);
+                            const afterTaxSpendingThisYear = state.customSpendingAmount * inflationMultiplier;
+                            withdrawal = afterTaxSpendingThisYear / (1 - state.effectiveTaxRate / 100);
+                        } else {
+                            // fixed-percentage or dynamic: use percentage
+                            withdrawal = balance * (state.withdrawalPercentageCustom / 100);
+                        }
                         
                         // Dynamic spending adjustment
                         if (state.spendingType === 'dynamic' && balance < peakBalance * 0.8) {
