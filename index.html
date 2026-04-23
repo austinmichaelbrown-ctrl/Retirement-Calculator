@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard</title>
+    <title>Retirement Planning Dashboard v1.1</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -599,41 +599,73 @@
             return futureValue / Math.pow(1 + state.inflationRate / 100, yearsOut);
         }
         
+        // Calculate annual withdrawal based on spending type and year
+        function calculateAnnualWithdrawal(currentBalance, initialBalance, yearInRetirement, overrideWithdrawalRate = null) {
+            if (overrideWithdrawalRate !== null) {
+                // Sensitivity analysis: use override rate as percentage
+                return initialBalance * (overrideWithdrawalRate / 100);
+            }
+            
+            if (state.spendingType === 'fixed-amount') {
+                // Fixed amount (after-tax) in first year, grows with inflation
+                const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, yearInRetirement);
+                const afterTaxSpending = state.customSpendingAmount * inflationMultiplier;
+                return afterTaxSpending / (1 - state.effectiveTaxRate / 100);
+            } else {
+                // Fixed percentage of initial portfolio at retirement
+                return initialBalance * (state.withdrawalPercentageCustom / 100);
+            }
+        }
+        
+        // Consistent simulation of the retirement phase
+        function simulateRetirement(startBalance, yearsInRetirement, retireAge, overrideWithdrawalRate = null) {
+            let balance = startBalance;
+            let initialBalance = startBalance;
+            let peakBalance = startBalance;
+            const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, retireAge - state.currentAge);
+
+            for (let year = 0; year < yearsInRetirement; year++) {
+                const randomReturn = (Math.random() + Math.random() + Math.random() + 
+                                     Math.random() + Math.random() + Math.random() - 3) * 6 + 
+                                    (state.projectedReturn - 2);
+                
+                let withdrawal = calculateAnnualWithdrawal(balance, initialBalance, year, overrideWithdrawalRate);
+                
+                // Apply dynamic adjustment if portfolio drops 20% from peak
+                if (state.spendingType === 'dynamic' && balance < peakBalance * 0.8 && overrideWithdrawalRate === null) {
+                    withdrawal *= 0.9;
+                }
+                
+                balance = balance * (1 + randomReturn / 100) - withdrawal;
+                if (balance > peakBalance) peakBalance = balance;
+                if (balance < 0) return { success: false, endBalance: 0 };
+            }
+            
+            const yearsTotal = (retireAge - state.currentAge) + yearsInRetirement;
+            const endBalanceInTodaysDollars = adjustForInflation(balance, yearsTotal);
+            return { success: endBalanceInTodaysDollars > initialBalanceInTodaysDollars, endBalance: balance };
+        }
+
         // Run a Monte Carlo simulation for retirement success
-        function runMonteCarloSimulation(retireAge, iterations = 1000) {
+        function runMonteCarloSimulation(retireAge, iterations = 1000, overrideWithdrawalRate = null) {
             const yearsToRetire = retireAge - state.currentAge;
-            const yearsInRetirement = state.yearsInRetirement;
             let successCount = 0;
             
             for (let i = 0; i < iterations; i++) {
-                // Use normal distribution for returns (mean = projected, stdDev = 12%)
                 let balance = getTotalAssets();
-                
-                // Accumulation phase
                 for (let year = 0; year < yearsToRetire; year++) {
                     const randomReturn = (Math.random() + Math.random() + Math.random() + 
                                          Math.random() + Math.random() + Math.random() - 3) * 6 + 
                                         (state.projectedReturn - 2);
                     balance = balance * (1 + randomReturn / 100) + state.annualContribution;
-                }
-                
-                // Withdrawal phase
-                const initialBalance = balance;
-                const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, yearsToRetire);
-                const annualWithdrawal = initialBalance * (state.withdrawalRate / 100);
-                
-                for (let year = 0; year < yearsInRetirement; year++) {
-                    const randomReturn = (Math.random() + Math.random() + Math.random() + 
-                                         Math.random() + Math.random() + Math.random() - 3) * 6 + 
-                                        (state.projectedReturn - 2);
-                    balance = balance * (1 + randomReturn / 100) - annualWithdrawal;
                     
-                    if (balance < 0) break;
+                    const yearNum = state.currentYear + year;
+                    const lumpSumsThisYear = state.lumpSums.filter(ls => ls.year === yearNum);
+                    for (let ls of lumpSumsThisYear) balance += ls.amount;
                 }
                 
-                // Success = end balance in today's dollars is greater than starting balance in today's dollars
-                const endBalanceInTodaysDollars = adjustForInflation(balance, yearsToRetire + yearsInRetirement);
-                if (endBalanceInTodaysDollars > initialBalanceInTodaysDollars) successCount++;
+                const result = simulateRetirement(balance, state.yearsInRetirement, retireAge, overrideWithdrawalRate);
+                if (result.success) successCount++;
             }
             
             return (successCount / iterations) * 100;
@@ -682,27 +714,17 @@
                 const mortgagePayment = age <= mortgageEndAge ? state.annualMortgagePayment : 0;
                 const growth = balance * (state.projectedReturn / 100);
                 
-                let withdrawal;
+                // Calculate basic withdrawal based on model
+                let annualWithdrawalAmount = calculateAnnualWithdrawal(balance, portfolioAtRetirement, year);
                 
-                if (state.spendingType === 'fixed-amount') {
-                    // Fixed amount increases by inflation each year
-                    const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, year);
-                    const afterTaxSpendingThisYear = state.customSpendingAmount * inflationMultiplier;
-                    withdrawal = afterTaxSpendingThisYear / (1 - state.effectiveTaxRate / 100);
-                } else if (state.spendingType === 'dynamic') {
-                    // Dynamic: Start with custom percentage but adjust if portfolio drops below 80% of peak
-                    withdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
-                    
-                    // Dynamic spending adjustment
-                    if (balance < peakBalance * 0.8) {
-                        withdrawal = withdrawal * 0.9; // Reduce spending by 10% if portfolio drops
-                    }
-                } else {
-                    // Fixed percentage
-                    withdrawal = portfolioAtRetirement * (state.withdrawalPercentageCustom / 100);
+                // Apply Dynamic spending adjustment logic
+                if (state.spendingType === 'dynamic' && balance < (peakBalance * 0.8)) {
+                    annualWithdrawalAmount *= 0.9;
                 }
                 
-                balance = balance + growth - withdrawal - mortgagePayment;
+                balance = balance + growth - annualWithdrawalAmount - mortgagePayment;
+                
+                // Update peak for future dynamic checks
                 if (balance > peakBalance) peakBalance = balance;
                 
                 const yearsIntoRetirement = year;
@@ -716,8 +738,8 @@
                     growth,
                     balance: Math.max(0, balance),
                     balanceInTodaysDollars,
-                    withdrawal: withdrawal,
-                    monthlyWithdrawalAfterTax: (withdrawal * (1 - state.effectiveTaxRate / 100)) / 12,
+                    withdrawal: annualWithdrawalAmount,
+                    monthlyWithdrawalAfterTax: (annualWithdrawalAmount * (1 - state.effectiveTaxRate / 100)) / 12,
                     mortgage: mortgagePayment,
                     income: 0
                 });
@@ -746,7 +768,7 @@
             
             return {
                 ageVsRate: generateMatrix(retireAges, withdrawalRates, (age, rate) => {
-                    return runMonteCarloSimulation(age, 500);
+                    return runMonteCarloSimulation(age, 500, rate);
                 }),
                 ageVsReturn: generateMatrix(retireAges, returns, (age, ret) => {
                     const saved = state.projectedReturn;
@@ -756,12 +778,9 @@
                     return result;
                 }),
                 rateVsReturn: generateMatrix(withdrawalRates, returns, (rate, ret) => {
-                    const savedRate = state.withdrawalRate;
                     const savedRet = state.projectedReturn;
-                    state.withdrawalRate = rate;
                     state.projectedReturn = ret;
-                    const result = runMonteCarloSimulation(state.retirementAge, 500);
-                    state.withdrawalRate = savedRate;
+                    const result = runMonteCarloSimulation(state.retirementAge, 500, rate);
                     state.projectedReturn = savedRet;
                     return result;
                 })
@@ -829,8 +848,11 @@
         }
         
         // Calculate required portfolio value at a given age to achieve 90% success rate
+        const requiredPortfolioCache = new Map();
         function calculateRequiredPortfolio(retireAge) {
-            // Binary search for the required portfolio that achieves 90% success
+            const cacheKey = `${retireAge}-${state.projectedReturn}-${state.spendingType}-${state.customSpendingAmount}-${state.withdrawalPercentageCustom}`;
+            if (requiredPortfolioCache.has(cacheKey)) return requiredPortfolioCache.get(cacheKey);
+            
             if (state.yearsInRetirement === 0 || state.projectedReturn === 0) return 0;
             
             const yearsToRetire = retireAge - state.currentAge;
@@ -841,54 +863,18 @@
             let required = 0;
             
             // Binary search: find portfolio amount that gives 90% success
-            for (let iteration = 0; iteration < 25; iteration++) {
+            for (let iteration = 0; iteration < 20; iteration++) {
                 const mid = (low + high) / 2;
                 let successCount = 0;
-                const iterations = 500; // Faster check with fewer iterations
+                const iterations = 200; // Faster check
                 
                 // Test this portfolio with Monte Carlo
                 for (let i = 0; i < iterations; i++) {
-                    let balance = mid; // Start with test portfolio
-                    
-                    // Withdrawal phase (starting from retireAge)
-                    const initialBalance = balance;
-                    const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, yearsToRetire);
-                    
-                    let peakBalance = balance;
-                    
-                    for (let year = 0; year < state.yearsInRetirement; year++) {
-                        const randomReturn = (Math.random() + Math.random() + Math.random() + 
-                                             Math.random() + Math.random() + Math.random() - 3) * 6 + 
-                                            (state.projectedReturn - 2);
-                        
-                        let withdrawal;
-                        if (state.spendingType === 'fixed-amount') {
-                            // Fixed amount increases by inflation each year
-                            const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, year);
-                            const afterTaxSpendingThisYear = state.customSpendingAmount * inflationMultiplier;
-                            withdrawal = afterTaxSpendingThisYear / (1 - state.effectiveTaxRate / 100);
-                        } else {
-                            // fixed-percentage or dynamic: use percentage
-                            withdrawal = balance * (state.withdrawalPercentageCustom / 100);
-                        }
-                        
-                        // Dynamic spending adjustment
-                        if (state.spendingType === 'dynamic' && balance < peakBalance * 0.8) {
-                            withdrawal = withdrawal * 0.9;
-                        }
-                        
-                        balance = balance * (1 + randomReturn / 100) - withdrawal;
-                        if (balance > peakBalance) peakBalance = balance;
-                        if (balance < 0) break;
-                    }
-                    
-                    // Success = end balance in today's dollars is greater than starting balance in today's dollars
-                    const endBalanceInTodaysDollars = adjustForInflation(balance, yearsToRetire + state.yearsInRetirement);
-                    if (endBalanceInTodaysDollars > initialBalanceInTodaysDollars) successCount++;
+                    const result = simulateRetirement(mid, state.yearsInRetirement, retireAge);
+                    if (result.success) successCount++;
                 }
                 
                 const successRate = (successCount / iterations) * 100;
-                
                 if (successRate >= 90) {
                     high = mid;
                     required = mid;
@@ -897,6 +883,7 @@
                 }
             }
             
+            requiredPortfolioCache.set(cacheKey, required);
             return required;
         }
         
@@ -907,7 +894,7 @@
             const portfolioAtRetirement = calcPortfolioAtRetirement(state.retirementAge, state.projectedReturn);
             const portfolioAtRetirementConservative = calcPortfolioAtRetirement(state.retirementAge, state.conservativeReturn);
             const portfolioInTodaysDollars = adjustForInflation(portfolioAtRetirement, yearsToRetirement);
-            const annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
+            const annualWithdrawal = calculateAnnualWithdrawal(portfolioAtRetirement, portfolioAtRetirement, 0);
             const afterTaxIncome = annualWithdrawal * (1 - state.effectiveTaxRate / 100);
             const monthlyAfterTaxIncome = afterTaxIncome / 12;
             
@@ -923,7 +910,7 @@
                     years,
                     portfolio,
                     portfolioToday,
-                    withdrawal: portfolio * (state.withdrawalRate / 100),
+                    withdrawal: calculateAnnualWithdrawal(portfolio, portfolio, 0),
                     highlight: age === state.retirementAge
                 });
             }
@@ -935,6 +922,7 @@
             
             // Year by year data
             const yearByYearData = generateYearByYear();
+            const requiredPortfolioAtRetirement = calculateRequiredPortfolio(state.retirementAge);
             
             app.innerHTML = `
                 <!-- SECTION 1: INPUTS -->
@@ -1115,7 +1103,7 @@
                             <div class="metric-value">${fmt(portfolioInTodaysDollars)}</div>
                         </div>
                         <div class="metric-card orange">
-                            <div class="metric-label">Annual Withdrawal (4% Rule)</div>
+                            <div class="metric-label">Initial Annual Withdrawal</div>
                             <div class="metric-value">${fmt(annualWithdrawal)}</div>
                         </div>
                         <div class="metric-card green">
@@ -1222,7 +1210,6 @@
                                 </thead>
                                 <tbody>
                                     ${yearByYearData.map(row => {
-                                        const requiredPortfolio = row.phase === 'retirement' ? calculateRequiredPortfolio(state.retirementAge) : null;
                                         return `
                                             <tr>
                                                 <td>${row.year}</td>
@@ -1235,7 +1222,7 @@
                                                 <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
                                                 <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
                                                 <td style="font-weight: 600; color: #7b1fa2;">${row.balanceInTodaysDollars ? fmt(row.balanceInTodaysDollars) : '—'}</td>
-                                                <td style="font-weight: 600; ${requiredPortfolio && row.balance >= requiredPortfolio ? 'color: #16a34a;' : 'color: #dc2626;'}">${requiredPortfolio ? fmt(requiredPortfolio) : '—'}</td>
+                                                <td style="font-weight: 600; ${row.phase === 'retirement' && row.balance >= requiredPortfolioAtRetirement ? 'color: #16a34a;' : 'color: #dc2626;'}">${row.phase === 'retirement' ? fmt(requiredPortfolioAtRetirement) : '—'}</td>
                                             </tr>
                                         `;
                                     }).join('')}
@@ -1291,7 +1278,6 @@
                                 </thead>
                                 <tbody>
                                     ${yearByYearData.filter(r => r.phase === 'retirement').map(row => {
-                                        const requiredPortfolio = calculateRequiredPortfolio(state.retirementAge);
                                         return `
                                             <tr>
                                                 <td>${row.year}</td>
@@ -1302,7 +1288,7 @@
                                                 <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
                                                 <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
                                                 <td style="font-weight: 600; color: #7b1fa2;">${fmt(row.balanceInTodaysDollars)}</td>
-                                                <td style="font-weight: 600; ${row.balance >= requiredPortfolio ? 'color: #16a34a;' : 'color: #dc2626;'}">${fmt(requiredPortfolio)}</td>
+                                                <td style="font-weight: 600; ${row.balance >= requiredPortfolioAtRetirement ? 'color: #16a34a;' : 'color: #dc2626;'}">${fmt(requiredPortfolioAtRetirement)}</td>
                                             </tr>
                                         `;
                                     }).join('')}
@@ -1330,7 +1316,7 @@
                                     <div>
                                         <div class="scenario-name">${scenario.name}</div>
                                         <div class="scenario-meta">
-                                            Retire at ${scenario.data.retirementAge}, ${scenario.data.projectedReturn}% return, ${scenario.data.withdrawalRate}% withdrawal
+                                            Retire at ${scenario.data.retirementAge}, ${scenario.data.projectedReturn}% return, ${scenario.data.withdrawalPercentageCustom}% withdrawal
                                         </div>
                                     </div>
                                     <div class="scenario-buttons">
@@ -1429,7 +1415,7 @@
                                 const yearByYear = generateYearByYear();
                                 const dataAtAge = yearByYear.find(y => y.age === age);
                                 const balance = dataAtAge ? dataAtAge.balance : 0;
-                                const rmd = calculateRMD(balance, age);
+                                const rmd = balance > 0 ? calculateRMD(balance, age) : 0;
                                 const cardClass = balance > 0 ? 'success' : 'failure';
                                 
                                 return `
@@ -1437,7 +1423,7 @@
                                         <div class="longevity-age">Age ${age}</div>
                                         <div class="longevity-metric"><strong>Year:</strong> ${retirementYear + yearsInRetirement}</div>
                                         <div class="longevity-metric"><strong>Portfolio:</strong> ${fmt(Math.max(0, balance))}</div>
-                                        ${age >= 73 ? `<div class="longevity-metric"><strong>Required RMD:</strong> ${fmt(rmd)}</div>` : ''}
+                                        ${age >= 73 && balance > 0 ? `<div class="longevity-metric"><strong>Required RMD:</strong> ${fmt(rmd)}</div>` : ''}
                                         <div class="longevity-metric" style="margin-top: 8px; font-size: 11px; color: #666;">
                                             ${balance > 0 ? '✓ Portfolio active' : '⚠️ Portfolio depleted'}
                                         </div>
@@ -1622,8 +1608,30 @@
                 balance = balance * (1 + stateData.projectedReturn / 100) + stateData.annualContribution;
             }
             
-            const withdraw = balance * (stateData.withdrawalRate / 100);
+            // Calculate withdrawal using the same logic as the main dashboard
+            let withdraw = 0;
+            const initialPortfolio = balance;
+            
+            if (stateData.spendingType === 'fixed-amount') {
+                // Note: Comparison metrics usually show first-year withdrawal
+                const afterTaxSpending = stateData.customSpendingAmount;
+                withdraw = afterTaxSpending / (1 - stateData.effectiveTaxRate / 100);
+            } else {
+                // fixed-percentage or dynamic start
+                withdraw = initialPortfolio * (stateData.withdrawalPercentageCustom / 100);
+            }
+            
             const afterTax = withdraw * (1 - stateData.effectiveTaxRate / 100);
+            
+            // Use a local simulation to get success rate for comparison
+            const getSuccessRate = () => {
+                // Save global state temporarily
+                const originalState = JSON.stringify(state);
+                Object.assign(state, stateData);
+                const rate = runMonteCarloSimulation(stateData.retirementAge, 300);
+                Object.assign(state, JSON.parse(originalState));
+                return rate;
+            };
             
             return {
                 'Retirement Age': stateData.retirementAge,
@@ -1632,10 +1640,10 @@
                 'Annual Withdrawal': fmt(withdraw),
                 'After-Tax Income': fmt(afterTax),
                 'Monthly Income': fmt(afterTax / 12),
-                'Success Probability': pct(runMonteCarloSimulation(stateData.retirementAge, 500)),
+                'Success Probability': pct(getSuccessRate()),
                 'Spending Type': stateData.spendingType,
                 'Return Assumption': pct(stateData.projectedReturn),
-                'Withdrawal Rate': pct(stateData.withdrawalRate)
+                'Withdrawal Rate': pct(stateData.withdrawalPercentageCustom)
             };
         }
         
