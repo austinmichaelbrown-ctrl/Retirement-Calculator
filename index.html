@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 1.1</title>
+    <title>Retirement Planning Dashboard - AB Version 1.2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -290,6 +290,11 @@
             box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
         }
         
+        .goal-seek-btn {
+            background: #10b981;
+            margin-top: 10px;
+        }
+
         .secondary-button {
             background: #fff;
             color: #4a5568;
@@ -522,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.1</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.2</h1>
         <div id="app"></div>
     </div>
     
@@ -562,6 +567,10 @@
             // Spending flexibility
             spendingType: 'fixed-percentage', // 'fixed-percentage' or 'fixed-amount' or 'dynamic'
             customSpendingAmount: 0,
+            
+            // Social Security
+            ssMonthlyAmount: 0,
+            ssStartAge: 67,
             
             // Longevity
             lifeExpectancy: 0,
@@ -625,9 +634,15 @@
         }
 
         // Calculate annual withdrawal based on spending type and year
-        function calculateAnnualWithdrawal(currentBalance, initialBalance, yearInRetirement, overrideWithdrawalRate = null) {
+        function calculateAnnualWithdrawal(currentBalance, initialBalance, yearInRetirement, overrideWithdrawalRate = null, age = 0) {
             const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, yearInRetirement);
             
+            // Calculate Social Security offset
+            let ssIncome = 0;
+            if (age >= state.ssStartAge) {
+                ssIncome = (state.ssMonthlyAmount * 12) * inflationMultiplier;
+            }
+
             if (overrideWithdrawalRate !== null) {
                 // Standard retirement rule: Initial % adjusted for inflation annually
                 return (initialBalance * (overrideWithdrawalRate / 100)) * inflationMultiplier;
@@ -637,10 +652,12 @@
                 // Fixed amount (after-tax) in first year, grows with inflation
                 const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, yearInRetirement);
                 const afterTaxSpending = state.customSpendingAmount * inflationMultiplier;
-                return afterTaxSpending / (1 - state.effectiveTaxRate / 100);
+                const totalNeeded = afterTaxSpending / (1 - state.effectiveTaxRate / 100);
+                return Math.max(0, totalNeeded - ssIncome);
             } else {
                 // Standard retirement rule: Fixed % of initial portfolio, adjusted for inflation
-                return (initialBalance * (state.withdrawalPercentageCustom / 100)) * inflationMultiplier;
+                const withdrawal = (initialBalance * (state.withdrawalPercentageCustom / 100)) * inflationMultiplier;
+                return Math.max(0, withdrawal - ssIncome);
             }
         }
         
@@ -652,10 +669,11 @@
             const initialBalanceInTodaysDollars = adjustForInflation(initialBalance, retireAge - state.currentAge);
 
             for (let year = 0; year < yearsInRetirement; year++) {
+                const currentAge = retireAge + year;
                 // Use Gaussian distribution for more accurate market modeling (StdDev assumed 12%)
                 const randomReturn = gaussianRandom(state.projectedReturn, 12);
                 
-                let withdrawal = calculateAnnualWithdrawal(balance, initialBalance, year, overrideWithdrawalRate);
+                let withdrawal = calculateAnnualWithdrawal(balance, initialBalance, year, overrideWithdrawalRate, currentAge);
                 
                 // Apply dynamic adjustment if portfolio drops 20% from peak
                 if (state.spendingType === 'dynamic' && balance < peakBalance * 0.8 && overrideWithdrawalRate === null) {
@@ -682,9 +700,11 @@
             const yearsToRetire = retireAge - state.currentAge;
             let runOutSuccess = 0;
             let growthSuccess = 0;
+            const allPaths = [];
             
             for (let i = 0; i < iterations; i++) {
                 let balance = getTotalAssets();
+                const path = [];
                 for (let year = 0; year < yearsToRetire; year++) {
                     const randomReturn = gaussianRandom(state.projectedReturn, 12);
                     balance = balance * (1 + randomReturn / 100) + state.annualContribution;
@@ -692,16 +712,32 @@
                     const yearNum = state.currentYear + year;
                     const lumpSumsThisYear = state.lumpSums.filter(ls => ls.year === yearNum);
                     for (let ls of lumpSumsThisYear) balance += ls.amount;
+                    path.push(balance);
                 }
                 
                 const result = simulateRetirement(balance, state.yearsInRetirement, retireAge, overrideWithdrawalRate);
                 if (result.successRunOut) runOutSuccess++;
                 if (result.successGrowth) growthSuccess++;
+                allPaths.push(path);
             }
             
+            // Calculate median path for chart
+            const medianPath = [];
+            if (allPaths.length > 0) {
+                for (let step = 0; step < yearsToRetire; step++) {
+                    const valuesAtStep = allPaths.map(p => p[step]).sort((a, b) => a - b);
+                    medianPath.push({
+                        p10: valuesAtStep[Math.floor(iterations * 0.1)],
+                        p50: valuesAtStep[Math.floor(iterations * 0.5)],
+                        p90: valuesAtStep[Math.floor(iterations * 0.9)]
+                    });
+                }
+            }
+
             return {
                 longevity: (runOutSuccess / iterations) * 100,
-                preservation: (growthSuccess / iterations) * 100
+                preservation: (growthSuccess / iterations) * 100,
+                pathHistory: medianPath
             };
         }
         
@@ -749,7 +785,7 @@
                 const growth = balance * (state.projectedReturn / 100);
                 
                 // Calculate basic withdrawal based on model
-                let annualWithdrawalAmount = calculateAnnualWithdrawal(balance, portfolioAtRetirement, year);
+                let annualWithdrawalAmount = calculateAnnualWithdrawal(balance, portfolioAtRetirement, year, null, age);
                 
                 // Apply Dynamic spending adjustment logic
                 if (state.spendingType === 'dynamic' && balance < (peakBalance * 0.8)) {
@@ -1085,6 +1121,20 @@
                     </div>
                     
                     <div style="margin-bottom: 30px;">
+                        <h3>Fixed Income (Social Security / Pension)</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Monthly Amount (Today's Dollars)</label>
+                                <input type="number" data-key="ssMonthlyAmount" step="100" value="${state.ssMonthlyAmount}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Start Age</label>
+                                <input type="number" data-key="ssStartAge" step="1" value="${state.ssStartAge}"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 30px;">
                         <h3>Spending Flexibility Model</h3>
                         <div class="input-grid">
                             <div class="input-group">
@@ -1148,6 +1198,7 @@
                     </div>
                     
                     <button class="calculate-button" id="calculateBtn">📊 Calculate</button>
+                    <button class="calculate-button goal-seek-btn" id="goalSeekBtn">🎯 Find Required Savings for 90% Success</button>
                 </div>
                 
                 <!-- SECTION 2: OUTPUTS & SUMMARY -->
@@ -1572,6 +1623,33 @@
                 });
             }
             
+            // Attach Goal Seek listener
+            const goalSeekBtn = document.getElementById('goalSeekBtn');
+            if (goalSeekBtn) {
+                goalSeekBtn.addEventListener('click', () => {
+                    let low = 0;
+                    let high = 500000;
+                    let result = 0;
+                    
+                    // Binary search for contribution amount
+                    for(let i=0; i<15; i++) {
+                        const mid = (low + high) / 2;
+                        const savedContrib = state.annualContribution;
+                        state.annualContribution = mid;
+                        const success = runMonteCarloSimulation(state.retirementAge, 200).longevity;
+                        state.annualContribution = savedContrib;
+                        
+                        if (success >= 90) {
+                            high = mid;
+                            result = mid;
+                        } else {
+                            low = mid;
+                        }
+                    }
+                    alert(`To reach a 90% success rate, your annual contribution should be: ${fmt(result)} (${fmt(result/12)}/mo)`);
+                });
+            }
+
             // Attach scenario management listeners
             const saveScenarioBtn = document.getElementById('saveScenarioBtn');
             if (saveScenarioBtn) {
@@ -1779,12 +1857,17 @@
                                 borderWidth: 2
                             },
                             {
-                                label: 'In Today\'s Dollars',
-                                data: yearByYearData.map((y, i) => {
-                                    const yearsFromNow = y.year - state.currentYear;
-                                    return adjustForInflation(y.balance, yearsFromNow);
-                                }),
-                                borderColor: '#764ba2',
+                                label: 'Bad Luck Scenario (10th Percentile)',
+                                data: monteCarloBase.pathHistory.map(h => h.p10),
+                                borderColor: '#dc2626',
+                                borderDash: [5, 5],
+                                borderWidth: 1,
+                                fill: false
+                            },
+                            {
+                                label: 'Good Luck Scenario (90th Percentile)',
+                                data: monteCarloBase.pathHistory.map(h => h.p90),
+                                borderColor: '#16a34a',
                                 borderDash: [5, 5],
                                 borderWidth: 2,
                                 fill: false
