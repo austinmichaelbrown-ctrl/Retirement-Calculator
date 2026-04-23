@@ -5,38 +5,307 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Retirement Planning Dashboard</title>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
             background: #f0f2f5;
+            color: #1a202c;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            margin-bottom: 30px;
+            font-size: 32px;
+        }
+        
+        h2 {
+            font-size: 22px;
+            margin-bottom: 15px;
+            color: #2d3748;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        
+        h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #2d3748;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .input-group label {
+            display: block;
+            color: #666;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .input-group input {
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-card {
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .metric-card.blue {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+        }
+        
+        .metric-card.purple {
+            background: #f3e5f5;
+            border-left: 4px solid #7b1fa2;
+        }
+        
+        .metric-card.green {
+            background: #e8f5e9;
+            border-left: 4px solid #388e3c;
+        }
+        
+        .metric-card.orange {
+            background: #fff3e0;
+            border-left: 4px solid #f57c00;
+        }
+        
+        .metric-label {
+            color: #666;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .metric-card.blue .metric-value {
+            color: #1976d2;
+        }
+        
+        .metric-card.purple .metric-value {
+            color: #7b1fa2;
+        }
+        
+        .metric-card.green .metric-value {
+            color: #388e3c;
+        }
+        
+        .metric-card.orange .metric-value {
+            color: #f57c00;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        thead {
+            background: #f7fafc;
+        }
+        
+        thead th {
+            padding: 12px;
+            border-bottom: 2px solid #e2e8f0;
+            font-weight: 600;
+            text-align: left;
+        }
+        
+        tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+        
+        .scenario-row.highlight td {
+            background: #f0f9ff;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .tab-button {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-button:hover {
+            color: #2d3748;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .positive {
+            color: #16a34a;
+        }
+        
+        .negative {
+            color: #dc2626;
+            font-weight: 600;
+        }
+        
+        .info-text {
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+        
+        .confidence-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .confidence-high {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .confidence-medium {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .confidence-low {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 40px 0 20px;
+            color: #999;
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
-    <div id="app"></div>
+    <div class="container">
+        <h1>🏖️ Retirement Planning Dashboard</h1>
+        <div id="app"></div>
+    </div>
     
     <script>
         const app = document.getElementById('app');
         
-        // State with your retirement data
+        // State with all retirement planning inputs
         const state = {
+            // Personal information
             currentAge: 38,
-            retirementAge: 49,
+            currentYear: 2026,
+            retirementAge: 62,
+            yearsInRetirement: 35,
+            
+            // Financial assets
             taxableAssets: 851286.69,
-            traditionalAssets: 1374023.50,
+            pretaxAssets: 1374023.50,
             rothAssets: 144923.96,
-            expectedReturn: 5.0,
+            
+            // Contributions
+            annualContribution: 30000,
+            
+            // Investment returns
+            projectedReturn: 7.0,
+            conservativeReturn: 4.0,
+            
+            // Economics
             inflationRate: 2.5,
+            effectiveTaxRate: 22.0,
             withdrawalRate: 4.0,
-            taxRate: 22.0,
-            lifeExpectancy: 85,
-            ssAge: 67,
-            ssBenefit: 74000,
-            mortgagePayment: 74000,
-            mortgageEndAge: 59
+            
+            // Lifestyle
+            annualMortgagePayment: 35000,
+            yearsUntilMortgagePaid: 15
         };
-
+        
         // Format currency
         function fmt(num) {
             return '$' + num.toLocaleString('en-US', {
@@ -44,150 +313,386 @@
                 maximumFractionDigits: 0
             });
         }
-
-        // Calculate scenario for a given retirement age
-        function calcScenario(retireAge) {
-            const total = state.taxableAssets + state.traditionalAssets + state.rothAssets;
-            const years = retireAge - state.currentAge;
-            const fv = total * Math.pow(1 + state.expectedReturn/100, years);
-            const withdraw = fv * (state.withdrawalRate / 100);
-            const afterTax = withdraw * (1 - state.taxRate/100);
-            return { total, years, fv, withdraw, afterTax, retireAge };
+        
+        // Format percentage
+        function pct(num) {
+            return num.toFixed(1) + '%';
         }
-
-        // Calculate year-by-year runway
-        function calcRunway() {
-            const s = calcScenario(state.retirementAge);
-            let balance = s.fv;
+        
+        // Calculate total portfolio value
+        function getTotalAssets() {
+            return state.taxableAssets + state.pretaxAssets + state.rothAssets;
+        }
+        
+        // Calculate portfolio at a given retirement age with specified return rate
+        function calcPortfolioAtRetirement(retireAge, returnRate) {
+            let balance = getTotalAssets();
+            const yearsToRetire = retireAge - state.currentAge;
+            
+            // Add annual contributions during working years
+            for (let i = 0; i < yearsToRetire; i++) {
+                balance = balance * (1 + returnRate / 100) + state.annualContribution;
+            }
+            
+            return balance;
+        }
+        
+        // Adjust value for inflation
+        function adjustForInflation(futureValue, yearsOut) {
+            return futureValue / Math.pow(1 + state.inflationRate / 100, yearsOut);
+        }
+        
+        // Run a Monte Carlo simulation for retirement success
+        function runMonteCarloSimulation(retireAge, iterations = 1000) {
+            const yearsToRetire = retireAge - state.currentAge;
+            const yearsInRetirement = state.yearsInRetirement;
+            let successCount = 0;
+            
+            for (let i = 0; i < iterations; i++) {
+                // Use normal distribution for returns (mean = projected, stdDev = 12%)
+                let balance = getTotalAssets();
+                
+                // Accumulation phase
+                for (let year = 0; year < yearsToRetire; year++) {
+                    const randomReturn = (Math.random() + Math.random() + Math.random() + 
+                                         Math.random() + Math.random() + Math.random() - 3) * 6 + 
+                                        (state.projectedReturn - 2);
+                    balance = balance * (1 + randomReturn / 100) + state.annualContribution;
+                }
+                
+                // Withdrawal phase
+                const initialBalance = balance;
+                const annualWithdrawal = initialBalance * (state.withdrawalRate / 100);
+                
+                for (let year = 0; year < yearsInRetirement; year++) {
+                    const randomReturn = (Math.random() + Math.random() + Math.random() + 
+                                         Math.random() + Math.random() + Math.random() - 3) * 6 + 
+                                        (state.projectedReturn - 2);
+                    balance = balance * (1 + randomReturn / 100) - annualWithdrawal;
+                    
+                    if (balance < 0) break;
+                }
+                
+                if (balance > 0) successCount++;
+            }
+            
+            return (successCount / iterations) * 100;
+        }
+        
+        // Generate year-by-year breakdown
+        function generateYearByYear() {
+            let balance = getTotalAssets();
+            const yearsToRetire = state.retirementAge - state.currentAge;
             const years = [];
             
-            for(let age = s.retireAge; age <= state.lifeExpectancy && age < s.retireAge + 20; age++) {
-                const ss = age >= state.ssAge ? state.ssBenefit : 0;
-                const mort = age <= state.mortgageEndAge ? state.mortgagePayment : 0;
-                const spending = s.withdraw + mort;
-                const income = ss;
-                const net = income - spending;
-                const growth = balance * (state.expectedReturn/100);
-                balance = balance + growth + net;
-                years.push({age, balance, spending, income, net, growth});
+            // Pre-retirement years
+            for (let year = 0; year < yearsToRetire; year++) {
+                const age = state.currentAge + year;
+                const growth = balance * (state.projectedReturn / 100);
+                balance = balance + growth + state.annualContribution;
+                years.push({
+                    year: state.currentYear + year,
+                    age,
+                    phase: 'accumulation',
+                    contribution: state.annualContribution,
+                    growth,
+                    balance,
+                    withdrawal: 0,
+                    income: 0,
+                    mortgage: 0
+                });
             }
+            
+            // Post-retirement years
+            const portfolioAtRetirement = balance;
+            const annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
+            const mortgageEndAge = state.retirementAge + state.yearsUntilMortgagePaid;
+            
+            for (let year = 0; year < state.yearsInRetirement; year++) {
+                const age = state.retirementAge + year;
+                const mortgagePayment = age <= mortgageEndAge ? state.annualMortgagePayment : 0;
+                const growth = balance * (state.projectedReturn / 100);
+                balance = balance + growth - annualWithdrawal - mortgagePayment;
+                
+                years.push({
+                    year: state.currentYear + yearsToRetire + year,
+                    age,
+                    phase: 'retirement',
+                    contribution: 0,
+                    growth,
+                    balance: Math.max(0, balance),
+                    withdrawal: annualWithdrawal,
+                    mortgage: mortgagePayment,
+                    income: 0
+                });
+            }
+            
             return years;
         }
-
-        // Render the dashboard
+        
+        // Render dashboard
         function render() {
-            const base = calcScenario(state.retirementAge);
-            const scenarios = [0, 2, 4, 6].map(add => calcScenario(state.retirementAge + add));
-            const runway = calcRunway();
+            const currentTotal = getTotalAssets();
+            const yearsToRetirement = state.retirementAge - state.currentAge;
+            const portfolioAtRetirement = calcPortfolioAtRetirement(state.retirementAge, state.projectedReturn);
+            const portfolioAtRetirementConservative = calcPortfolioAtRetirement(state.retirementAge, state.conservativeReturn);
+            const portfolioInTodaysDollars = adjustForInflation(portfolioAtRetirement, yearsToRetirement);
+            const annualWithdrawal = portfolioAtRetirement * (state.withdrawalRate / 100);
+            const afterTaxIncome = annualWithdrawal * (1 - state.effectiveTaxRate / 100);
+            
+            // Scenarios at different retirement ages
+            const scenarios = [];
+            for (let offset = -2; offset <= 6; offset += 2) {
+                const age = Math.max(state.currentAge + 1, state.retirementAge + offset);
+                const years = age - state.currentAge;
+                const portfolio = calcPortfolioAtRetirement(age, state.projectedReturn);
+                const portfolioToday = adjustForInflation(portfolio, years);
+                scenarios.push({
+                    age,
+                    years,
+                    portfolio,
+                    portfolioToday,
+                    withdrawal: portfolio * (state.withdrawalRate / 100),
+                    highlight: age === state.retirementAge
+                });
+            }
+            
+            // Monte Carlo simulations
+            const monteCarloBase = runMonteCarloSimulation(state.retirementAge);
+            const monteCarloEarly = runMonteCarloSimulation(Math.max(state.currentAge + 1, state.retirementAge - 2));
+            const monteCarloLate = runMonteCarloSimulation(state.retirementAge + 2);
+            
+            // Year by year data
+            const yearByYearData = generateYearByYear();
             
             app.innerHTML = `
-                <div style="max-width: 1400px; margin: 0 auto; padding: 20px;">
-                    <h1 style="color: #1a202c; margin-bottom: 25px;">🏖️ Retirement Planning Dashboard</h1>
+                <!-- SECTION 1: INPUTS -->
+                <div class="section">
+                    <h2>📋 Input Factors</h2>
                     
-                    <!-- Summary Panel -->
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                        <h2 style="margin: 0 0 10px 0; font-size: 20px;">✨ What This Means</h2>
-                        <p style="margin: 0; line-height: 1.6; font-size: 16px;">
-                            If you retire at age <strong>${state.retirementAge}</strong>, your portfolio will grow to <strong>${fmt(base.fv)}</strong>. 
-                            With a ${state.withdrawalRate}% withdrawal rate, you can safely withdraw <strong>${fmt(base.withdraw)}</strong> per year 
-                            (<strong>${fmt(base.afterTax)}</strong> after taxes). This should support you through age ${state.lifeExpectancy}.
-                        </p>
-                    </div>
-                    
-                    <!-- Inputs Section -->
-                    <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin: 0 0 15px 0; color: #2d3748;">📊 Your Information</h3>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
-                            ${Object.keys(state).map(k => `
-                                <div>
-                                    abel style="display: block; color: #666; font-size: 12px; margin-bottom: 4px; font-weight: 500;">
-                                        ${k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
-                                    </label>
-                                    <input 
-                                        type="number" 
-                                        step="any" 
-                                        value="${state[k]}" 
-                                        data-key="${k}" 
-                                        style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
-                                    />
-                                </div>
-                            `).join('')}
+                    <div style="margin-bottom: 30px;">
+                        <h3>Personal Information</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Current Age</label>
+                                <input type="number" data-key="currentAge" step="1" value="${state.currentAge}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Current Year</label>
+                                <input type="number" data-key="currentYear" step="1" value="${state.currentYear}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Retirement Age</label>
+                                <input type="number" data-key="retirementAge" step="1" value="${state.retirementAge}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Years in Retirement</label>
+                                <input type="number" data-key="yearsInRetirement" step="1" value="${state.yearsInRetirement}"/>
+                            </div>
                         </div>
                     </div>
                     
-                    <!-- Key Metrics Cards -->
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <div style="color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Current Portfolio</div>
-                            <div style="font-size: 22px; font-weight: bold; color: #1976d2; margin-top: 5px;">${fmt(base.total)}</div>
-                        </div>
-                        <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <div style="color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">At Retirement</div>
-                            <div style="font-size: 22px; font-weight: bold; color: #7b1fa2; margin-top: 5px;">${fmt(base.fv)}</div>
-                        </div>
-                        <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <div style="color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Annual Withdrawal</div>
-                            <div style="font-size: 22px; font-weight: bold; color: #388e3c; margin-top: 5px;">${fmt(base.withdraw)}</div>
-                        </div>
-                        <div style="background: #fff3e0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <div style="color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">After-Tax Income</div>
-                            <div style="font-size: 22px; font-weight: bold; color: #f57c00; margin-top: 5px;">${fmt(base.afterTax)}</div>
+                    <div style="margin-bottom: 30px;">
+                        <h3>Current Assets</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Taxable Assets</label>
+                                <input type="number" data-key="taxableAssets" step="1" value="${state.taxableAssets}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Pre-Tax Assets</label>
+                                <input type="number" data-key="pretaxAssets" step="1" value="${state.pretaxAssets}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Roth Assets</label>
+                                <input type="number" data-key="rothAssets" step="1" value="${state.rothAssets}"/>
+                            </div>
                         </div>
                     </div>
                     
-                    <!-- Timing Comparison Table -->
-                    <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin: 0 0 15px 0; color: #2d3748;">📅 Retirement Timing Comparison</h3>
-                        <table style="width: 100%; border-collapse: collapse;">
+                    <div style="margin-bottom: 30px;">
+                        <h3>Contributions & Returns</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Annual Contribution (Before Retirement)</label>
+                                <input type="number" data-key="annualContribution" step="1" value="${state.annualContribution}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Projected Annual Return (%)</label>
+                                <input type="number" data-key="projectedReturn" step="0.1" value="${state.projectedReturn}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Conservative Annual Return (%)</label>
+                                <input type="number" data-key="conservativeReturn" step="0.1" value="${state.conservativeReturn}"/>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 30px;">
+                        <h3>Economic Factors</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Inflation Rate (%)</label>
+                                <input type="number" data-key="inflationRate" step="0.1" value="${state.inflationRate}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Effective Tax Rate (%)</label>
+                                <input type="number" data-key="effectiveTaxRate" step="0.1" value="${state.effectiveTaxRate}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Withdrawal Rate (%)</label>
+                                <input type="number" data-key="withdrawalRate" step="0.1" value="${state.withdrawalRate}"/>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3>Lifestyle & Obligations</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Annual Mortgage Payment</label>
+                                <input type="number" data-key="annualMortgagePayment" step="1" value="${state.annualMortgagePayment}"/>
+                            </div>
+                            <div class="input-group">
+                                <label>Years Until Mortgage Paid Off</label>
+                                <input type="number" data-key="yearsUntilMortgagePaid" step="1" value="${state.yearsUntilMortgagePaid}"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- SECTION 2: OUTPUTS & SUMMARY -->
+                <div class="section">
+                    <h2>📊 Outputs & Summary</h2>
+                    <div class="metrics-grid">
+                        <div class="metric-card blue">
+                            <div class="metric-label">Current Portfolio Value</div>
+                            <div class="metric-value">${fmt(currentTotal)}</div>
+                        </div>
+                        <div class="metric-card purple">
+                            <div class="metric-label">Years Until Retirement</div>
+                            <div class="metric-value">${yearsToRetirement}</div>
+                        </div>
+                        <div class="metric-card green">
+                            <div class="metric-label">Year of Retirement</div>
+                            <div class="metric-value">${state.currentYear + yearsToRetirement}</div>
+                        </div>
+                        <div class="metric-card blue">
+                            <div class="metric-label">Portfolio at Retirement</div>
+                            <div class="metric-value">${fmt(portfolioAtRetirement)}</div>
+                        </div>
+                        <div class="metric-card purple">
+                            <div class="metric-label">Portfolio at Retirement (Today's Dollars)</div>
+                            <div class="metric-value">${fmt(portfolioInTodaysDollars)}</div>
+                        </div>
+                        <div class="metric-card orange">
+                            <div class="metric-label">Annual Withdrawal (4% Rule)</div>
+                            <div class="metric-value">${fmt(annualWithdrawal)}</div>
+                        </div>
+                        <div class="metric-card green">
+                            <div class="metric-label">After-Tax Annual Income</div>
+                            <div class="metric-value">${fmt(afterTaxIncome)}</div>
+                        </div>
+                        <div class="metric-card blue">
+                            <div class="metric-label">Conservative Scenario Portfolio</div>
+                            <div class="metric-value">${fmt(portfolioAtRetirementConservative)}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- SECTION 3: RETIREMENT SCENARIOS -->
+                <div class="section">
+                    <h2>🎯 Retirement Scenarios</h2>
+                    <p class="info-text">
+                        Compare different retirement ages and see success probability with Monte Carlo simulation (1000 iterations).
+                        Success is defined as your portfolio lasting through your planned retirement years.
+                    </p>
+                    
+                    <div class="table-container">
+                        <table>
                             <thead>
-                                <tr style="background: #f7fafc; text-align: left;">
-                                    <th style="padding: 10px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Scenario</th>
-                                    <th style="padding: 10px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Retire Age</th>
-                                    <th style="padding: 10px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Portfolio</th>
-                                    <th style="padding: 10px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Withdrawal</th>
-                                    <th style="padding: 10px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">After Tax</th>
+                                <tr>
+                                    <th>Retirement Age</th>
+                                    <th>Years to Retirement</th>
+                                    <th>Year</th>
+                                    <th>Portfolio Value</th>
+                                    <th>Today's Dollars</th>
+                                    <th>Annual Withdrawal</th>
+                                    <th>Success Probability</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${scenarios.map((s, i) => `
-                                    <tr style="border-bottom: 1px solid #e2e8f0;">
-                                        <td style="padding: 10px; font-weight: 600;">${i === 0 ? 'Retire Now' : '+' + (scenarios[i].years - base.years) + ' years'}</td>
-                                        <td style="padding: 10px;">${s.retireAge} (${2026 + s.years})</td>
-                                        <td style="padding: 10px;">${fmt(s.fv)}</td>
-                                        <td style="padding: 10px;">${fmt(s.withdraw)}</td>
-                                        <td style="padding: 10px; color: #16a34a; font-weight: 600;">${fmt(s.afterTax)}</td>
-                                    </tr>
-                                `).join('')}
+                                ${scenarios.map(s => {
+                                    const mc = s.age === state.retirementAge ? monteCarloBase : 
+                                              (s.age < state.retirementAge ? monteCarloEarly : monteCarloLate);
+                                    let confidenceClass = 'confidence-low';
+                                    if (mc >= 90) confidenceClass = 'confidence-high';
+                                    else if (mc >= 75) confidenceClass = 'confidence-medium';
+                                    
+                                    return `
+                                        <tr ${s.highlight ? 'class="scenario-row highlight"' : ''}>
+                                            <td style="font-weight: 600;">${s.age}</td>
+                                            <td>${s.years}</td>
+                                            <td>${state.currentYear + s.years}</td>
+                                            <td>${fmt(s.portfolio)}</td>
+                                            <td>${fmt(s.portfolioToday)}</td>
+                                            <td>${fmt(s.withdrawal)}</td>
+                                            <td>
+                                                ${pct(mc)}
+                                                <span class="confidence-badge ${confidenceClass}">
+                                                    ${mc >= 90 ? 'High' : mc >= 75 ? 'Medium' : 'Low'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
                     
-                    <!-- Year-by-Year Runway -->
-                    <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin: 0 0 10px 0; color: #2d3748;">📊 Year-by-Year Runway</h3>
-                        <p style="color: #666; font-size: 13px; margin: 0 0 15px 0; line-height: 1.5;">
-                            Shows your portfolio balance, spending, and income year-by-year after retirement. 
-                            Includes Social Security (starting age ${state.ssAge}) and mortgage (until age ${state.mortgageEndAge}).
-                        </p>
-                        <div style="overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <p class="info-text">
+                        <strong>Note:</strong> The highlighted row shows your current retirement age target. 
+                        A success probability of 90%+ is considered safe, 75-90% is moderate, and below 75% may require adjustments.
+                    </p>
+                </div>
+                
+                <!-- SECTION 4: YEAR-BY-YEAR BREAKDOWN -->
+                <div class="section">
+                    <h2>📈 Year-by-Year Breakdown</h2>
+                    
+                    <div class="tabs">
+                        <button class="tab-button active" data-tab="all">All Years</button>
+                        <button class="tab-button" data-tab="accumulation">Accumulation Phase</button>
+                        <button class="tab-button" data-tab="retirement">Retirement Phase</button>
+                    </div>
+                    
+                    <div id="tab-all" class="tab-content active">
+                        <p class="info-text">Complete year-by-year breakdown showing contributions, growth, withdrawals, and portfolio balance.</p>
+                        <div class="table-container">
+                            <table>
                                 <thead>
-                                    <tr style="background: #f7fafc; text-align: left;">
-                                        <th style="padding: 8px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Age</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Balance</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Spending</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Income (SS)</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid #e2e8f0; font-weight: 600;">Growth</th>
+                                    <tr>
+                                        <th>Year</th>
+                                        <th>Age</th>
+                                        <th>Phase</th>
+                                        <th>Annual Contribution</th>
+                                        <th>Investment Growth</th>
+                                        <th>Withdrawal</th>
+                                        <th>Mortgage Payment</th>
+                                        <th>Balance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${runway.map(y => `
-                                        <tr style="border-bottom: 1px solid #e2e8f0;">
-                                            <td style="padding: 8px; font-weight: 600;">${y.age}</td>
-                                            <td style="padding: 8px; ${y.balance < 0 ? 'color: #dc2626; font-weight: 600;' : ''}">${fmt(y.balance)}</td>
-                                            <td style="padding: 8px;">${fmt(y.spending)}</td>
-                                            <td style="padding: 8px; color: #16a34a;">${fmt(y.income)}</td>
-                                            <td style="padding: 8px; color: #2563eb;">${fmt(y.growth)}</td>
+                                    ${yearByYearData.map(row => `
+                                        <tr>
+                                            <td>${row.year}</td>
+                                            <td>${row.age}</td>
+                                            <td>${row.phase === 'accumulation' ? '💼' : '🏖️'}</td>
+                                            <td>${row.contribution > 0 ? fmt(row.contribution) : '—'}</td>
+                                            <td class="positive">${fmt(row.growth)}</td>
+                                            <td>${row.withdrawal > 0 ? fmt(row.withdrawal) : '—'}</td>
+                                            <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
+                                            <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -195,17 +700,86 @@
                         </div>
                     </div>
                     
-                    <footer style="text-align: center; padding: 30px 0; color: #666; font-size: 13px;">
-                        <p>💡 Tip: Edit any input value above to see instant updates across all sections</p>
-                    </footer>
+                    <div id="tab-accumulation" class="tab-content">
+                        <p class="info-text">Years before retirement showing annual contributions and compound growth.</p>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Year</th>
+                                        <th>Age</th>
+                                        <th>Contribution</th>
+                                        <th>Investment Growth</th>
+                                        <th>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${yearByYearData.filter(r => r.phase === 'accumulation').map(row => `
+                                        <tr>
+                                            <td>${row.year}</td>
+                                            <td>${row.age}</td>
+                                            <td>${fmt(row.contribution)}</td>
+                                            <td class="positive">${fmt(row.growth)}</td>
+                                            <td style="font-weight: 600; color: #388e3c;">${fmt(row.balance)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div id="tab-retirement" class="tab-content">
+                        <p class="info-text">Years after retirement showing annual withdrawals, mortgage payments, and portfolio decline/growth.</p>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Year</th>
+                                        <th>Age</th>
+                                        <th>Investment Growth</th>
+                                        <th>Withdrawal</th>
+                                        <th>Mortgage Payment</th>
+                                        <th>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${yearByYearData.filter(r => r.phase === 'retirement').map(row => `
+                                        <tr>
+                                            <td>${row.year}</td>
+                                            <td>${row.age}</td>
+                                            <td class="positive">${fmt(row.growth)}</td>
+                                            <td>${fmt(row.withdrawal)}</td>
+                                            <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
+                                            <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
+                
+                <footer>
+                    💡 Edit any input value above to see real-time updates across all sections
+                </footer>
             `;
             
             // Attach event listeners to inputs
             document.querySelectorAll('input[data-key]').forEach(input => {
-                input.addEventListener('input', (e) => {
-                    state[e.target.dataset.key] = parseFloat(e.target.value) || 0;
+                input.addEventListener('change', (e) => {
+                    const value = parseFloat(e.target.value);
+                    state[e.target.dataset.key] = isNaN(value) ? 0 : value;
                     render();
+                });
+            });
+            
+            // Attach tab listeners
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    e.target.classList.add('active');
+                    document.getElementById('tab-' + e.target.dataset.tab).classList.add('active');
                 });
             });
         }
