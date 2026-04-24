@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 1.9</title>
+    <title>Retirement Planning Dashboard - AB Version 2.2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -527,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.9</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 2.2</h1>
         <div id="app"></div>
     </div>
     
@@ -539,32 +539,32 @@
         // State with all retirement planning inputs
         const state = {
             // Personal information
-            currentAge: 0,
+            currentAge: 38,
             currentYear: 2026,
-            retirementAge: 0,
-            yearsInRetirement: 0,
+            retirementAge: 39,
+            yearsInRetirement: 61,
             
             // Financial assets
-            taxableAssets: 0,
-            pretaxAssets: 0,
-            rothAssets: 0,
+            taxableAssets: 6550000,
+            pretaxAssets: 1475000,
+            rothAssets: 80000,
             
             // Contributions
-            annualContribution: 0,
+            annualContribution: 120000,
             
             // Investment returns
-            projectedReturn: 0,
-            conservativeReturn: 0,
+            projectedReturn: 7,
+            conservativeReturn: 5,
             
             // Economics
-            inflationRate: 0,
-            effectiveTaxRate: 0,
+            inflationRate: 2.5,
+            effectiveTaxRate: 15,
             withdrawalRate: 0,
             withdrawalPercentageCustom: 4.0, // Custom percentage when using fixed-percentage model
             
             // Lifestyle
-            annualMortgagePayment: 0,
-            yearsUntilMortgagePaid: 0,
+            annualMortgagePayment: 74000,
+            yearsUntilMortgagePaid: 27,
             
             // Spending flexibility
             spendingType: 'fixed-percentage', // 'fixed-percentage' or 'fixed-amount' or 'dynamic'
@@ -575,7 +575,7 @@
             partnerRetirementAge: 0,
             
             // Longevity
-            lifeExpectancy: 0,
+            lifeExpectancy: 100,
             
             // Lump sums (special grants, inheritances, etc)
             lumpSums: []
@@ -987,6 +987,34 @@
             return required;
         }
         
+        // Automatically find required annual savings for 90% success
+        function calculateRequiredContribution() {
+            let low = 0;
+            let high = 1000000; // $1M annual limit for search
+            let result = 0;
+            const savedContrib = state.annualContribution;
+            
+            // Binary search: find contribution amount that gives 90% longevity success
+            // 12 iterations provides precision within ~$250
+            for(let i = 0; i < 12; i++) {
+                const mid = (low + high) / 2;
+                state.annualContribution = mid;
+                // Using 150 iterations for real-time calculation to keep UI snappy
+                const success = runMonteCarloSimulation(state.retirementAge, 150).longevity;
+                
+                if (success >= 90) {
+                    high = mid;
+                    result = mid;
+                } else {
+                    low = mid;
+                }
+            }
+            
+            // Restore original state
+            state.annualContribution = savedContrib;
+            return result;
+        }
+
         // Render dashboard
         function render() {
             const currentTotal = getTotalAssets();
@@ -1005,6 +1033,7 @@
             
             const requiredPortfolioAtRetirement = calculateRequiredPortfolio(state.retirementAge);
             const shortfallSurplus = portfolioAtRetirement - requiredPortfolioAtRetirement;
+            const requiredAnnualSavings = calculateRequiredContribution();
 
             // Calculate Portfolio at End and Run out age from deterministic data
             const lastRow = yearByYearData[yearByYearData.length - 1];
@@ -1246,7 +1275,6 @@
                     </div>
                     
                     <button class="calculate-button" id="calculateBtn">📊 Calculate</button>
-                    <button class="calculate-button goal-seek-btn" id="goalSeekBtn">🎯 Find Required Savings for 90% Success</button>
                 </div>
                 
                 <!-- SECTION 2: OUTPUTS & SUMMARY -->
@@ -1302,6 +1330,14 @@
                         <div class="metric-card ${runOutRow ? 'orange' : 'green'}">
                             <div class="metric-label">Your Money will run out in</div>
                             <div class="metric-value" style="font-size: 18px;">${runOutText}</div>
+                        </div>
+                        <div class="metric-card green">
+                            <div class="metric-label">Required Annual Savings for 90% Success</div>
+                            <div class="metric-value">${fmt(requiredAnnualSavings)}</div>
+                        </div>
+                        <div class="metric-card green">
+                            <div class="metric-label">Required Monthly Savings for 90% Success</div>
+                            <div class="metric-value">${fmt(requiredAnnualSavings / 12)}</div>
                         </div>
                     </div>
                 </div>
@@ -1741,33 +1777,6 @@
                 });
             }
             
-            // Attach Goal Seek listener
-            const goalSeekBtn = document.getElementById('goalSeekBtn');
-            if (goalSeekBtn) {
-                goalSeekBtn.addEventListener('click', () => {
-                    let low = 0;
-                    let high = 500000;
-                    let result = 0;
-                    
-                    // Binary search for contribution amount
-                    for(let i=0; i<15; i++) {
-                        const mid = (low + high) / 2;
-                        const savedContrib = state.annualContribution;
-                        state.annualContribution = mid;
-                        const success = runMonteCarloSimulation(state.retirementAge, 200).longevity;
-                        state.annualContribution = savedContrib;
-                        
-                        if (success >= 90) {
-                            high = mid;
-                            result = mid;
-                        } else {
-                            low = mid;
-                        }
-                    }
-                    alert(`To reach a 90% success rate, your annual contribution should be: ${fmt(result)} (${fmt(result/12)}/mo)`);
-                });
-            }
-
             // Attach scenario management listeners
             const saveScenarioBtn = document.getElementById('saveScenarioBtn');
             if (saveScenarioBtn) {
