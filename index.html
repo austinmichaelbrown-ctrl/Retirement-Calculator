@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 1.5</title>
+    <title>Retirement Planning Dashboard - AB Version 1.6</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -527,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.5</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.6</h1>
         <div id="app"></div>
     </div>
     
@@ -971,6 +971,11 @@
         function render() {
             const currentTotal = getTotalAssets();
             const yearsToRetirement = state.retirementAge - state.currentAge;
+            
+            // Generate data early to avoid ReferenceErrors in summary metrics
+            const yearByYearData = generateYearByYear();
+            const monteCarloBase = runMonteCarloSimulation(state.retirementAge);
+
             const portfolioAtRetirement = calcPortfolioAtRetirement(state.retirementAge, state.projectedReturn);
             const portfolioAtRetirementConservative = calcPortfolioAtRetirement(state.retirementAge, state.conservativeReturn);
             const portfolioInTodaysDollars = adjustForInflation(portfolioAtRetirement, yearsToRetirement);
@@ -1025,13 +1030,8 @@
                 });
             }
             
-            // Monte Carlo simulations
-            const monteCarloBase = runMonteCarloSimulation(state.retirementAge);
             const monteCarloEarly = runMonteCarloSimulation(Math.max(state.currentAge + 1, state.retirementAge - 2));
             const monteCarloLate = runMonteCarloSimulation(state.retirementAge + 2);
-            
-            // Year by year data
-            const yearByYearData = generateYearByYear();
             
             app.innerHTML = `
                 <!-- SECTION 1: INPUTS -->
