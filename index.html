@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 1.4</title>
+    <title>Retirement Planning Dashboard - AB Version 1.5</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -527,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.4</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.5</h1>
         <div id="app"></div>
     </div>
     
@@ -981,6 +981,33 @@
             const requiredPortfolioAtRetirement = calculateRequiredPortfolio(state.retirementAge);
             const shortfallSurplus = portfolioAtRetirement - requiredPortfolioAtRetirement;
 
+            // Calculate Portfolio at End and Run out age from deterministic data
+            const lastRow = yearByYearData[yearByYearData.length - 1];
+            const portfolioAtEnd = lastRow ? lastRow.balance : 0;
+            const portfolioAtEndTodays = lastRow ? (lastRow.balanceInTodaysDollars || 0) : 0;
+            
+            const runOutRow = yearByYearData.find(y => y.phase === 'retirement' && y.balance <= 0);
+            const runOutText = runOutRow ? `Age ${runOutRow.age} (${runOutRow.year})` : "You won't run out";
+
+            // Recommendations Engine: Finding earliest ages for 90% confidence
+            const getRecommendation = (metric) => {
+                // We search from current age + 1 up to age 80
+                for (let age = state.currentAge + 1; age <= 80; age++) {
+                    // Use slightly lower iterations for the search to maintain UI performance
+                    const mc = runMonteCarloSimulation(age, 150); 
+                    if (mc[metric] >= 90) {
+                        const portAtRet = calcPortfolioAtRetirement(age, state.projectedReturn);
+                        const withdraw = calculateAnnualWithdrawal(portAtRet, portAtRet, 0, null, age);
+                        const afterTax = withdraw * (1 - state.effectiveTaxRate / 100);
+                        return { age, portAtRet, afterTax };
+                    }
+                }
+                return null;
+            };
+
+            const recLongevity = getRecommendation('longevity');
+            const recPreservation = getRecommendation('preservation');
+
             // Scenarios at different retirement ages
             const scenarios = [];
             for (let offset = -2; offset <= 6; offset += 2) {
@@ -1218,9 +1245,51 @@
                             <div class="metric-label">Gap to 90% Success Target</div>
                             <div class="metric-value">${shortfallSurplus >= 0 ? '+' : ''}${fmt(shortfallSurplus)}</div>
                         </div>
+                        <div class="metric-card blue">
+                            <div class="metric-label">Portfolio at End</div>
+                            <div class="metric-value">${fmt(portfolioAtEnd)}</div>
+                        </div>
+                        <div class="metric-card purple">
+                            <div class="metric-label">Portfolio at End (Today's $)</div>
+                            <div class="metric-value">${fmt(portfolioAtEndTodays)}</div>
+                        </div>
+                        <div class="metric-card ${runOutRow ? 'orange' : 'green'}">
+                            <div class="metric-label">Your Money will run out in</div>
+                            <div class="metric-value" style="font-size: 18px;">${runOutText}</div>
+                        </div>
                     </div>
                 </div>
                 
+                <!-- SECTION: RECOMMENDED SCENARIOS -->
+                <div class="section">
+                    <h2>💡 Recommended Scenarios</h2>
+                    <p class="info-text">Based on your inputs, here are the earliest retirement ages to achieve 90% confidence in your goals.</p>
+                    
+                    <div class="comparison-grid">
+                        <div class="comparison-card" style="border-left: 5px solid #16a34a;">
+                            <div class="comparison-title">🛡️ Safe Retirement Goal</div>
+                            <p class="info-text">Earliest age where you have a 90% chance of not running out of money.</p>
+                            ${recLongevity ? `
+                                <div class="comparison-row"><div class="comparison-label">Retirement Age</div><div class="comparison-value">${recLongevity.age}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Portfolio at Retirement</div><div class="comparison-value">${fmt(recLongevity.portAtRet)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">After-Tax Annual Income</div><div class="comparison-value">${fmt(recLongevity.afterTax)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Confidence</div><div class="comparison-value" style="color: #16a34a;">90%+ Longevity</div></div>
+                            ` : '<p class="negative">No scenario found within age 80.</p>'}
+                        </div>
+                        
+                        <div class="comparison-card" style="border-left: 5px solid #7b1fa2;">
+                            <div class="comparison-title">💎 Wealth Preservation Goal</div>
+                            <p class="info-text">Earliest age where you have a 90% chance of growing your inflation-adjusted wealth.</p>
+                            ${recPreservation ? `
+                                <div class="comparison-row"><div class="comparison-label">Retirement Age</div><div class="comparison-value">${recPreservation.age}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Portfolio at Retirement</div><div class="comparison-value">${fmt(recPreservation.portAtRet)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">After-Tax Annual Income</div><div class="comparison-value">${fmt(recPreservation.afterTax)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Confidence</div><div class="comparison-value" style="color: #7b1fa2;">90%+ Growth</div></div>
+                            ` : '<p class="negative">No scenario found within age 80.</p>'}
+                        </div>
+                    </div>
+                </div>
+
                 <!-- SECTION 3: RETIREMENT SCENARIOS -->
                 <div class="section">
                     <h2>🎯 Retirement Scenarios</h2>
