@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 2.3</title>
+    <title>Retirement Planning Dashboard - AB Version 2.4</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -527,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 2.3</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 2.4</h1>
         <div id="app"></div>
     </div>
     
@@ -1047,16 +1047,27 @@
 
             // Recommendations Engine: Finding earliest ages for 90% confidence
             const getRecommendation = (metric, crashInRetirement = false) => { // Added crashInRetirement
-                // We search from current age + 1 up to age 80
+                // We search from current age + 1 up to age 85
                 for (let age = state.currentAge + 1; age <= 80; age++) {
-                    // Use slightly lower iterations for the search to maintain UI performance
-                    const mc = runMonteCarloSimulation(age, 150, null, crashInRetirement); // Pass crashInRetirement
-                    if (mc[metric] >= 90) {
-                        const portAtRet = calcPortfolioAtRetirement(age, state.projectedReturn);
-                        // For recommendation, we need to calculate the withdrawal based on the *current* state's spending type
-                        // and then adjust for the specific age. The `calculateAnnualWithdrawal` function already handles this.
-                        // The `crashReturnRate` is not relevant for calculating the *initial* withdrawal amount, only for the simulation.
-                        const withdraw = calculateAnnualWithdrawal(portAtRet, portAtRet, 0, null, age); 
+                    // 1. Calculate the portfolio balance at this age assuming steady (deterministic) growth
+                    const portAtRet = calcPortfolioAtRetirement(age, state.projectedReturn);
+                    const yearsInRetirement = Math.max(1, state.lifeExpectancy - age);
+                    const crashReturnRate = crashInRetirement ? -25 : null;
+                    
+                    // 2. Stress-test ONLY the retirement phase for this specific target balance
+                    let successCount = 0;
+                    const iterations = 400; // Increased iterations for more stable recommendations
+                    
+                    for (let i = 0; i < iterations; i++) {
+                        const result = simulateRetirement(portAtRet, yearsInRetirement, age, null, crashReturnRate);
+                        if (metric === 'longevity' && result.successRunOut) successCount++;
+                        if (metric === 'preservation' && result.successGrowth) successCount++;
+                    }
+                    
+                    const successRate = (successCount / iterations) * 100;
+                    
+                    if (successRate >= 90) {
+                        const withdraw = calculateAnnualWithdrawal(portAtRet, portAtRet, 0, null, age);
                         const afterTax = withdraw * (1 - state.effectiveTaxRate / 100);
                         return { age, portAtRet, afterTax };
                     }
