@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 2.2</title>
+    <title>Retirement Planning Dashboard - AB Version 2.3</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -527,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 2.2</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 2.3</h1>
         <div id="app"></div>
     </div>
     
@@ -701,6 +701,7 @@
         // Run a Monte Carlo simulation for retirement success
         function runMonteCarloSimulation(retireAge, iterations = 1000, overrideWithdrawalRate = null, crashInRetirement = false) { // Added crashInRetirement
             const yearsToRetire = retireAge - state.currentAge;
+            const yearsInRetirement = Math.max(1, state.lifeExpectancy - retireAge);
             let runOutSuccess = 0;
             let growthSuccess = 0;
             const allPaths = [];
@@ -721,7 +722,7 @@
                     path.push(balance);
                 }
                 
-                const result = simulateRetirement(balance, state.yearsInRetirement, retireAge, overrideWithdrawalRate, crashReturnRate); // Pass crashReturnRate
+                const result = simulateRetirement(balance, yearsInRetirement, retireAge, overrideWithdrawalRate, crashReturnRate); // Pass calculated duration
                 if (result.successRunOut) runOutSuccess++;
                 if (result.successGrowth) growthSuccess++;
                 allPaths.push(path);
@@ -751,6 +752,7 @@
         function generateYearByYear() {
             let balance = getTotalAssets();
             const yearsToRetire = state.retirementAge - state.currentAge;
+            const retirementDuration = Math.max(1, state.lifeExpectancy - state.retirementAge);
             const retirementYear = state.currentYear + yearsToRetire;
             const years = [];
             
@@ -785,7 +787,7 @@
             const mortgageEndAge = state.retirementAge + state.yearsUntilMortgagePaid;
             let peakBalance = balance; // For dynamic spending
             
-            for (let year = 0; year < state.yearsInRetirement; year++) {
+            for (let year = 0; year < retirementDuration; year++) {
                 const age = state.retirementAge + year;
                 // Check if we are in the "One Income" phase where partner covers costs
                 const isOneIncomePhase = state.isOneIncomeScenario && age < state.partnerRetirementAge;
@@ -950,7 +952,7 @@
         // Calculate required portfolio value at a given age to achieve 90% success rate
         const requiredPortfolioCache = new Map();
         function calculateRequiredPortfolio(retireAge, remainingYears = null) {
-            const yearsToCalculate = remainingYears !== null ? remainingYears : state.yearsInRetirement;
+            const yearsToCalculate = remainingYears !== null ? remainingYears : Math.max(1, state.lifeExpectancy - retireAge);
             const cacheKey = `${retireAge}-${yearsToCalculate}-${state.projectedReturn}-${state.spendingType}-${state.customSpendingAmount}-${state.withdrawalPercentageCustom}-${state.isOneIncomeScenario}-${state.partnerRetirementAge}`;
             if (requiredPortfolioCache.has(cacheKey)) return requiredPortfolioCache.get(cacheKey);
             
@@ -1279,11 +1281,51 @@
                 
                 <!-- SECTION 2: OUTPUTS & SUMMARY -->
                 <div class="section">
-                    <h2>📊 Outputs & Summary</h2>
+                    <h2>📊 Core Retirement Metrics</h2>
                     <div class="metrics-grid">
                         <div class="metric-card blue">
                             <div class="metric-label">Current Portfolio Value</div>
                             <div class="metric-value">${fmt(currentTotal)}</div>
+                        </div>
+                        <div class="metric-card blue">
+                            <div class="metric-label">Portfolio at End</div>
+                            <div class="metric-value">${fmt(portfolioAtEnd)}</div>
+                        </div>
+                        <div class="metric-card ${runOutRow ? 'orange' : 'green'}">
+                            <div class="metric-label">Your Money will run out in</div>
+                            <div class="metric-value" style="font-size: 18px;">${runOutText}</div>
+                        </div>
+                        <div class="metric-card purple">
+                            <div class="metric-label">Portfolio at End (Today's $)</div>
+                            <div class="metric-value">${fmt(portfolioAtEndTodays)}</div>
+                        </div>
+                        <div class="metric-card blue">
+                            <div class="metric-label">Conservative Scenario Portfolio</div>
+                            <div class="metric-value">${fmt(portfolioAtRetirementConservative)}</div>
+                        </div>
+                        <div class="metric-card green">
+                            <div class="metric-label">After-Tax Annual Income</div>
+                            <div class="metric-value">${fmt(afterTaxIncome)}</div>
+                        </div>
+                        <div class="metric-card green">
+                            <div class="metric-label">After-Tax Monthly Income</div>
+                            <div class="metric-value">${fmt(monthlyAfterTaxIncome)}</div>
+                        </div>
+                        <div class="metric-card orange">
+                            <div class="metric-label">Initial Annual Withdrawal</div>
+                            <div class="metric-value">${fmt(annualWithdrawal)}</div>
+                        </div>
+                    </div>
+
+                    <h2 style="margin-top: 30px;">🎯 Plan Details & Target Analysis</h2>
+                    <div class="metrics-grid">
+                        <div class="metric-card blue">
+                            <div class="metric-label">Portfolio at Retirement</div>
+                            <div class="metric-value">${fmt(portfolioAtRetirement)}</div>
+                        </div>
+                        <div class="metric-card purple">
+                            <div class="metric-label">Portfolio at Retirement (Today's dollars)</div>
+                            <div class="metric-value">${fmt(portfolioInTodaysDollars)}</div>
                         </div>
                         <div class="metric-card purple">
                             <div class="metric-label">Years Until Retirement</div>
@@ -1293,43 +1335,9 @@
                             <div class="metric-label">Year of Retirement</div>
                             <div class="metric-value">${state.currentYear + yearsToRetirement}</div>
                         </div>
-                        <div class="metric-card blue">
-                            <div class="metric-label">Portfolio at Retirement</div>
-                            <div class="metric-value">${fmt(portfolioAtRetirement)}</div>
-                        </div>
-                        <div class="metric-card purple">
-                            <div class="metric-label">Portfolio at Retirement (Today's Dollars)</div>
-                            <div class="metric-value">${fmt(portfolioInTodaysDollars)}</div>
-                        </div>
-                        <div class="metric-card orange">
-                            <div class="metric-label">Initial Annual Withdrawal</div>
-                            <div class="metric-value">${fmt(annualWithdrawal)}</div>
-                        </div>
-                        <div class="metric-card green">
-                            <div class="metric-label">After-Tax Annual Income</div>
-                            <div class="metric-value">${fmt(afterTaxIncome)}</div>
-                        </div>                        <div class="metric-card green">
-                            <div class="metric-label">After-Tax Monthly Income</div>
-                            <div class="metric-value">${fmt(monthlyAfterTaxIncome)}</div>
-                        </div>                        <div class="metric-card blue">
-                            <div class="metric-label">Conservative Scenario Portfolio</div>
-                            <div class="metric-value">${fmt(portfolioAtRetirementConservative)}</div>
-                        </div>
                         <div class="metric-card ${shortfallSurplus >= 0 ? 'green' : 'orange'}">
                             <div class="metric-label">Gap to 90% Success Target</div>
                             <div class="metric-value">${shortfallSurplus >= 0 ? '+' : ''}${fmt(shortfallSurplus)}</div>
-                        </div>
-                        <div class="metric-card blue">
-                            <div class="metric-label">Portfolio at End</div>
-                            <div class="metric-value">${fmt(portfolioAtEnd)}</div>
-                        </div>
-                        <div class="metric-card purple">
-                            <div class="metric-label">Portfolio at End (Today's $)</div>
-                            <div class="metric-value">${fmt(portfolioAtEndTodays)}</div>
-                        </div>
-                        <div class="metric-card ${runOutRow ? 'orange' : 'green'}">
-                            <div class="metric-label">Your Money will run out in</div>
-                            <div class="metric-value" style="font-size: 18px;">${runOutText}</div>
                         </div>
                         <div class="metric-card green">
                             <div class="metric-label">Required Annual Savings for 90% Success</div>
@@ -1495,7 +1503,7 @@
                                 <tbody>
                                     ${yearByYearData.map(row => {
                                         const yearsRemaining = row.phase === 'retirement' ? 
-                                            (state.yearsInRetirement - (row.age - state.retirementAge)) : 0;
+                                            (Math.max(1, state.lifeExpectancy - row.age)) : 0;
                                         const dynamicRequired = row.phase === 'retirement' ? calculateRequiredPortfolio(row.age, yearsRemaining) : 0;
                                         return `
                                             <tr>
@@ -1565,7 +1573,7 @@
                                 </thead>
                                 <tbody>
                                     ${yearByYearData.filter(r => r.phase === 'retirement').map(row => {
-                                        const yearsRemaining = state.yearsInRetirement - (row.age - state.retirementAge);
+                                        const yearsRemaining = Math.max(1, state.lifeExpectancy - row.age);
                                         const dynamicRequired = calculateRequiredPortfolio(row.age, yearsRemaining);
                                         return `
                                             <tr>
