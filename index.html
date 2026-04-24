@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retirement Planning Dashboard - AB Version 1.6</title>
+    <title>Retirement Planning Dashboard - AB Version 1.9</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -527,7 +527,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.6</h1>
+        <h1>🏖️ Retirement Planning Dashboard - AB Version 1.9</h1>
         <div id="app"></div>
     </div>
     
@@ -569,6 +569,10 @@
             // Spending flexibility
             spendingType: 'fixed-percentage', // 'fixed-percentage' or 'fixed-amount' or 'dynamic'
             customSpendingAmount: 0,
+            
+            // Dual-income / One-income scenario
+            isOneIncomeScenario: false,
+            partnerRetirementAge: 0,
             
             // Longevity
             lifeExpectancy: 0,
@@ -633,6 +637,11 @@
 
         // Calculate annual withdrawal based on spending type and year
         function calculateAnnualWithdrawal(currentBalance, initialBalance, yearInRetirement, overrideWithdrawalRate = null, age = 0) {
+            // One-Income Phase: No draw down if partner is still working
+            if (state.isOneIncomeScenario && age > 0 && age < state.partnerRetirementAge) {
+                return 0;
+            }
+
             const inflationMultiplier = Math.pow(1 + state.inflationRate / 100, yearInRetirement);
             
             if (overrideWithdrawalRate !== null) {
@@ -651,7 +660,7 @@
         }
         
         // Consistent simulation of the retirement phase
-        function simulateRetirement(startBalance, yearsInRetirement, retireAge, overrideWithdrawalRate = null) {
+        function simulateRetirement(startBalance, yearsInRetirement, retireAge, overrideWithdrawalRate = null, crashReturnRate = null) { // Added crashReturnRate
             let balance = startBalance;
             let initialBalance = startBalance;
             let peakBalance = startBalance;
@@ -660,7 +669,12 @@
             for (let year = 0; year < yearsInRetirement; year++) {
                 const currentAge = retireAge + year;
                 // Use Gaussian distribution for more accurate market modeling (StdDev assumed 12%)
-                const randomReturn = gaussianRandom(state.projectedReturn, 12);
+                let randomReturn;
+                if (crashReturnRate !== null && year === 0) { // Apply crash in first year of retirement if specified
+                    randomReturn = crashReturnRate;
+                } else {
+                    randomReturn = gaussianRandom(state.projectedReturn, 12);
+                }
                 
                 let withdrawal = calculateAnnualWithdrawal(balance, initialBalance, year, overrideWithdrawalRate, currentAge);
                 
@@ -685,12 +699,15 @@
         }
 
         // Run a Monte Carlo simulation for retirement success
-        function runMonteCarloSimulation(retireAge, iterations = 1000, overrideWithdrawalRate = null) {
+        function runMonteCarloSimulation(retireAge, iterations = 1000, overrideWithdrawalRate = null, crashInRetirement = false) { // Added crashInRetirement
             const yearsToRetire = retireAge - state.currentAge;
             let runOutSuccess = 0;
             let growthSuccess = 0;
             const allPaths = [];
             
+            // Define crash return for retirement phase if applicable
+            const crashReturnRate = crashInRetirement ? -25 : null; // -25% for crash scenario in retirement
+
             for (let i = 0; i < iterations; i++) {
                 let balance = getTotalAssets();
                 const path = [];
@@ -704,7 +721,7 @@
                     path.push(balance);
                 }
                 
-                const result = simulateRetirement(balance, state.yearsInRetirement, retireAge, overrideWithdrawalRate);
+                const result = simulateRetirement(balance, state.yearsInRetirement, retireAge, overrideWithdrawalRate, crashReturnRate); // Pass crashReturnRate
                 if (result.successRunOut) runOutSuccess++;
                 if (result.successGrowth) growthSuccess++;
                 allPaths.push(path);
@@ -770,7 +787,10 @@
             
             for (let year = 0; year < state.yearsInRetirement; year++) {
                 const age = state.retirementAge + year;
-                const mortgagePayment = age <= mortgageEndAge ? state.annualMortgagePayment : 0;
+                // Check if we are in the "One Income" phase where partner covers costs
+                const isOneIncomePhase = state.isOneIncomeScenario && age < state.partnerRetirementAge;
+                const mortgagePayment = isOneIncomePhase ? 0 : (age <= mortgageEndAge ? state.annualMortgagePayment : 0);
+
                 const growth = balance * (state.projectedReturn / 100);
                 
                 // Calculate basic withdrawal based on model
@@ -929,14 +949,14 @@
         
         // Calculate required portfolio value at a given age to achieve 90% success rate
         const requiredPortfolioCache = new Map();
-        function calculateRequiredPortfolio(retireAge) {
-            const cacheKey = `${retireAge}-${state.projectedReturn}-${state.spendingType}-${state.customSpendingAmount}-${state.withdrawalPercentageCustom}`;
+        function calculateRequiredPortfolio(retireAge, remainingYears = null) {
+            const yearsToCalculate = remainingYears !== null ? remainingYears : state.yearsInRetirement;
+            const cacheKey = `${retireAge}-${yearsToCalculate}-${state.projectedReturn}-${state.spendingType}-${state.customSpendingAmount}-${state.withdrawalPercentageCustom}-${state.isOneIncomeScenario}-${state.partnerRetirementAge}`;
             if (requiredPortfolioCache.has(cacheKey)) return requiredPortfolioCache.get(cacheKey);
             
-            if (state.yearsInRetirement === 0 || state.projectedReturn === 0) return 0;
+            if (yearsToCalculate <= 0 || state.projectedReturn === 0) return 0;
             
             const yearsToRetire = retireAge - state.currentAge;
-            if (yearsToRetire < 0) return 0;
             
             let low = 0;
             let high = 20000000; // Start with $20M upper bound
@@ -950,7 +970,7 @@
                 
                 // Test this portfolio with Monte Carlo
                 for (let i = 0; i < iterations; i++) {
-                    const result = simulateRetirement(mid, state.yearsInRetirement, retireAge);
+                    const result = simulateRetirement(mid, yearsToCalculate, retireAge);
                     if (result.successRunOut) successCount++;
                 }
                 
@@ -995,14 +1015,17 @@
             const runOutText = runOutRow ? `Age ${runOutRow.age} (${runOutRow.year})` : "You won't run out";
 
             // Recommendations Engine: Finding earliest ages for 90% confidence
-            const getRecommendation = (metric) => {
+            const getRecommendation = (metric, crashInRetirement = false) => { // Added crashInRetirement
                 // We search from current age + 1 up to age 80
                 for (let age = state.currentAge + 1; age <= 80; age++) {
                     // Use slightly lower iterations for the search to maintain UI performance
-                    const mc = runMonteCarloSimulation(age, 150); 
+                    const mc = runMonteCarloSimulation(age, 150, null, crashInRetirement); // Pass crashInRetirement
                     if (mc[metric] >= 90) {
                         const portAtRet = calcPortfolioAtRetirement(age, state.projectedReturn);
-                        const withdraw = calculateAnnualWithdrawal(portAtRet, portAtRet, 0, null, age);
+                        // For recommendation, we need to calculate the withdrawal based on the *current* state's spending type
+                        // and then adjust for the specific age. The `calculateAnnualWithdrawal` function already handles this.
+                        // The `crashReturnRate` is not relevant for calculating the *initial* withdrawal amount, only for the simulation.
+                        const withdraw = calculateAnnualWithdrawal(portAtRet, portAtRet, 0, null, age); 
                         const afterTax = withdraw * (1 - state.effectiveTaxRate / 100);
                         return { age, portAtRet, afterTax };
                     }
@@ -1012,6 +1035,8 @@
 
             const recLongevity = getRecommendation('longevity');
             const recPreservation = getRecommendation('preservation');
+            const recLongevityCrash = getRecommendation('longevity', true); // New crash recommendation
+            const recPreservationCrash = getRecommendation('preservation', true); // New crash recommendation
 
             // Scenarios at different retirement ages
             const scenarios = [];
@@ -1136,6 +1161,27 @@
                         </div>
                     </div>
                     
+                    <div style="margin-bottom: 30px;">
+                        <h3>Dual-Income Planning (One-Income Phase)</h3>
+                        <div class="input-grid">
+                            <div class="input-group">
+                                <label>Enable One-Income Phase?</label>
+                                <select data-key="isOneIncomeScenario">
+                                    <option value="false" ${state.isOneIncomeScenario === false ? 'selected' : ''}>No (Both retire same time)</option>
+                                    <option value="true" ${state.isOneIncomeScenario === true ? 'selected' : ''}>Yes (One partner continues working)</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>User Age when Partner Retires</label>
+                                <div class="input-row">
+                                    <input type="number" data-key="partnerRetirementAge" step="1" value="${state.partnerRetirementAge}"/>
+                                    <input type="range" data-key="partnerRetirementAge" min="18" max="85" value="${state.partnerRetirementAge}"/>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="info-text">If enabled, the portfolio won't be drawn down until the user reaches the "Partner Retires" age. Yearly spending and mortgage are assumed to be covered by the working partner's income during this gap.</p>
+                    </div>
+
                     <div style="margin-bottom: 30px;">
                         <h3>Spending Flexibility Model</h3>
                         <div class="input-grid">
@@ -1267,8 +1313,8 @@
                     
                     <div class="comparison-grid">
                         <div class="comparison-card" style="border-left: 5px solid #16a34a;">
-                            <div class="comparison-title">🛡️ Safe Retirement Goal</div>
-                            <p class="info-text">Earliest age where you have a 90% chance of not running out of money.</p>
+                            <div class="comparison-title">🛡️ Safe Retirement Goal (Normal Market)</div>
+                            <p class="info-text">Earliest age where you have a 90% chance of not running out of money, assuming normal market volatility.</p>
                             ${recLongevity ? `
                                 <div class="comparison-row"><div class="comparison-label">Retirement Age</div><div class="comparison-value">${recLongevity.age}</div></div>
                                 <div class="comparison-row"><div class="comparison-label">Portfolio at Retirement</div><div class="comparison-value">${fmt(recLongevity.portAtRet)}</div></div>
@@ -1278,13 +1324,35 @@
                         </div>
                         
                         <div class="comparison-card" style="border-left: 5px solid #7b1fa2;">
-                            <div class="comparison-title">💎 Wealth Preservation Goal</div>
-                            <p class="info-text">Earliest age where you have a 90% chance of growing your inflation-adjusted wealth.</p>
+                            <div class="comparison-title">💎 Wealth Preservation Goal (Normal Market)</div>
+                            <p class="info-text">Earliest age where you have a 90% chance of growing your inflation-adjusted wealth, assuming normal market volatility.</p>
                             ${recPreservation ? `
                                 <div class="comparison-row"><div class="comparison-label">Retirement Age</div><div class="comparison-value">${recPreservation.age}</div></div>
                                 <div class="comparison-row"><div class="comparison-label">Portfolio at Retirement</div><div class="comparison-value">${fmt(recPreservation.portAtRet)}</div></div>
                                 <div class="comparison-row"><div class="comparison-label">After-Tax Annual Income</div><div class="comparison-value">${fmt(recPreservation.afterTax)}</div></div>
                                 <div class="comparison-row"><div class="comparison-label">Confidence</div><div class="comparison-value" style="color: #7b1fa2;">90%+ Growth</div></div>
+                            ` : '<p class="negative">No scenario found within age 80.</p>'}
+                        </div>
+
+                        <div class="comparison-card" style="border-left: 5px solid #dc2626;">
+                            <div class="comparison-title">📉 Safe Retirement Goal (Market Crash)</div>
+                            <p class="info-text">Earliest age where you have a 90% chance of not running out of money, assuming a -25% market crash in the first year of retirement.</p>
+                            ${recLongevityCrash ? `
+                                <div class="comparison-row"><div class="comparison-label">Retirement Age</div><div class="comparison-value">${recLongevityCrash.age}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Portfolio at Retirement</div><div class="comparison-value">${fmt(recLongevityCrash.portAtRet)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">After-Tax Annual Income</div><div class="comparison-value">${fmt(recLongevityCrash.afterTax)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Confidence</div><div class="comparison-value" style="color: #dc2626;">90%+ Longevity (Crash)</div></div>
+                            ` : '<p class="negative">No scenario found within age 80.</p>'}
+                        </div>
+                        
+                        <div class="comparison-card" style="border-left: 5px solid #f59e0b;">
+                            <div class="comparison-title">⚠️ Wealth Preservation Goal (Market Crash)</div>
+                            <p class="info-text">Earliest age where you have a 90% chance of growing your inflation-adjusted wealth, assuming a -25% market crash in the first year of retirement.</p>
+                            ${recPreservationCrash ? `
+                                <div class="comparison-row"><div class="comparison-label">Retirement Age</div><div class="comparison-value">${recPreservationCrash.age}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Portfolio at Retirement</div><div class="comparison-value">${fmt(recPreservationCrash.portAtRet)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">After-Tax Annual Income</div><div class="comparison-value">${fmt(recPreservationCrash.afterTax)}</div></div>
+                                <div class="comparison-row"><div class="comparison-label">Confidence</div><div class="comparison-value" style="color: #f59e0b;">90%+ Growth (Crash)</div></div>
                             ` : '<p class="negative">No scenario found within age 80.</p>'}
                         </div>
                     </div>
@@ -1294,8 +1362,9 @@
                 <div class="section">
                     <h2>🎯 Retirement Scenarios</h2>
                     <p class="info-text">
-                        Compare different retirement ages and see success probability with Monte Carlo simulation (1000 iterations).
-                        Success is defined as your portfolio lasting through your planned retirement years.
+                        Compare different retirement ages and see success probability with Monte Carlo simulation (1000 iterations). 
+                        The "Longevity" probability is for a normal market.
+                        To see the impact of a market crash, refer to the "Recommended Scenarios" above.
                     </p>
                     
                     <div class="table-container">
@@ -1389,6 +1458,9 @@
                                 </thead>
                                 <tbody>
                                     ${yearByYearData.map(row => {
+                                        const yearsRemaining = row.phase === 'retirement' ? 
+                                            (state.yearsInRetirement - (row.age - state.retirementAge)) : 0;
+                                        const dynamicRequired = row.phase === 'retirement' ? calculateRequiredPortfolio(row.age, yearsRemaining) : 0;
                                         return `
                                             <tr>
                                                 <td>${row.year}</td>
@@ -1401,7 +1473,7 @@
                                                 <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
                                                 <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
                                                 <td style="font-weight: 600; color: #7b1fa2;">${row.balanceInTodaysDollars ? fmt(row.balanceInTodaysDollars) : '—'}</td>
-                                                <td style="font-weight: 600; ${row.phase === 'retirement' && row.balance >= requiredPortfolioAtRetirement ? 'color: #16a34a;' : 'color: #dc2626;'}">${row.phase === 'retirement' ? fmt(requiredPortfolioAtRetirement) : '—'}</td>
+                                                <td style="font-weight: 600; ${row.phase === 'retirement' && row.balance >= dynamicRequired ? 'color: #16a34a;' : 'color: #dc2626;'}">${row.phase === 'retirement' ? fmt(dynamicRequired) : '—'}</td>
                                             </tr>
                                         `;
                                     }).join('')}
@@ -1457,6 +1529,8 @@
                                 </thead>
                                 <tbody>
                                     ${yearByYearData.filter(r => r.phase === 'retirement').map(row => {
+                                        const yearsRemaining = state.yearsInRetirement - (row.age - state.retirementAge);
+                                        const dynamicRequired = calculateRequiredPortfolio(row.age, yearsRemaining);
                                         return `
                                             <tr>
                                                 <td>${row.year}</td>
@@ -1467,7 +1541,7 @@
                                                 <td>${row.mortgage > 0 ? fmt(row.mortgage) : '—'}</td>
                                                 <td style="font-weight: 600; ${row.balance < 0 ? 'color: #dc2626;' : 'color: #388e3c;'}">${fmt(row.balance)}</td>
                                                 <td style="font-weight: 600; color: #7b1fa2;">${fmt(row.balanceInTodaysDollars)}</td>
-                                                <td style="font-weight: 600; ${row.balance >= requiredPortfolioAtRetirement ? 'color: #16a34a;' : 'color: #dc2626;'}">${fmt(requiredPortfolioAtRetirement)}</td>
+                                                <td style="font-weight: 600; ${row.balance >= dynamicRequired ? 'color: #16a34a;' : 'color: #dc2626;'}">${fmt(dynamicRequired)}</td>
                                             </tr>
                                         `;
                                     }).join('')}
@@ -1747,7 +1821,11 @@
             // Handle select dropdowns
             document.querySelectorAll('select[data-key]').forEach(select => {
                 select.addEventListener('change', (e) => {
-                    state[e.target.dataset.key] = e.target.value;
+                    let value = e.target.value;
+                    if (value === "true") value = true;
+                    if (value === "false") value = false;
+                    state[e.target.dataset.key] = value;
+                    render(); // Re-render for immediate feedback
                 });
             });
             
@@ -1837,7 +1915,10 @@
             let withdraw = 0;
             const initialPortfolio = balance;
             
-            if (stateData.spendingType === 'fixed-amount') {
+            // Check for One Income Phase in first year of retirement
+            if (stateData.isOneIncomeScenario && stateData.retirementAge < stateData.partnerRetirementAge) {
+                withdraw = 0;
+            } else if (stateData.spendingType === 'fixed-amount') {
                 // Note: Comparison metrics usually show first-year withdrawal
                 const afterTaxSpending = stateData.customSpendingAmount;
                 withdraw = afterTaxSpending / (1 - stateData.effectiveTaxRate / 100);
